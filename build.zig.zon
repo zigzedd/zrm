@@ -1,0 +1,25 @@
+.{
+	.name = "zrm",
+	.version = "0.1.0",
+
+	.minimum_zig_version = "0.13.0",
+
+	.dependencies = .{
+		.zollections = .{
+			.url = "https://code.zeptotech.net/zedd/zollections/archive/v0.1.1.tar.gz",
+			.hash = "12200fe147879d72381633e6f44d76db2c8a603cda1969b4e474c15c31052dbb24b7",
+		},
+		.pg = .{
+			.url = "git+https://github.com/karlseguin/pg.zig?ref=zig-0.13#239a4468163a49d8c0d03285632eabe96003e9e2",
+			.hash = "1220a1d7e51e2fa45e547c76a9e099c09d06e14b0b9bfc6baa89367f56f1ded399a0",
+		},
+	},
+
+	.paths = .{
+		"build.zig",
+		"build.zig.zon",
+		"src",
+		"README.md",
+		"LICENSE"
+	},
+}

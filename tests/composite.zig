@@ -136,4 +136,24 @@ test "composite model create, save and find" {
 
 	try std.testing.expectEqual(1, result4.models.len);
 	try std.testing.expectEqualDeep(newModel, result4.first().?.*);
+
+
+	// Try to find multiple models at once.
+	var result5 = try CompositeModelRepository.find(std.testing.allocator, database, &[_]CompositeModelRepository.KeyType{
+		.{
+			.firstcol = newModel.firstcol,
+			.secondcol = newModel.secondcol,
+		},
+		.{
+			.firstcol = result3.first().?.firstcol,
+			.secondcol = result3.first().?.secondcol,
+		},
+	});
+	defer result5.deinit();
+
+	try std.testing.expectEqual(2, result5.models.len);
+	try std.testing.expectEqual(newModel.firstcol, result5.models[0].firstcol);
+	try std.testing.expectEqualStrings(newModel.secondcol, result5.models[0].secondcol);
+	try std.testing.expectEqual(result3.first().?.firstcol, result5.models[1].firstcol);
+	try std.testing.expectEqualStrings(result3.first().?.secondcol, result5.models[1].secondcol);
 }

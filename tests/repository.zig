@@ -310,4 +310,13 @@ test "model create, save and find" {
 	defer result4.deinit(); // Will clear some values in newModel.
 
 	try std.testing.expectEqualDeep(newModel, result4.first().?.*);
+
+
+	// Try to find multiple models at once.
+	var result5 = try MyModelRepository.find(std.testing.allocator, database, &[_]i32{1, newModel.id});
+	defer result5.deinit();
+
+	try std.testing.expectEqual(2, result5.models.len);
+	try std.testing.expectEqual(1, result5.models[0].id);
+	try std.testing.expectEqual(newModel.id, result5.models[1].id);
 }

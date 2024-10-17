@@ -14,6 +14,36 @@ pub fn Insertable(comptime ValueType: type) type {
 	};
 }
 
+/// Build an insertable structure type from a normal structure.
+pub fn InsertableStruct(comptime StructType: type) type {
+	// Get type info of the given structure.
+	const typeInfo = @typeInfo(StructType);
+
+	// Initialize fields of the insertable struct.
+	var newFields: [typeInfo.Struct.fields.len]std.builtin.Type.StructField = undefined;
+	for (typeInfo.Struct.fields, &newFields) |field, *newField| {
+		// Create a new field for each field of the given struct.
+		const newFieldType = Insertable(field.type);
+		newField.* = std.builtin.Type.StructField{
+			.name = field.name,
+			.type = newFieldType,
+			.default_value = null,
+			.is_comptime = false,
+			.alignment = @alignOf(newFieldType),
+		};
+	}
+
+	// Return the insertable structure type.
+	return @Type(std.builtin.Type{
+		.Struct = .{
+			.layout = .auto,
+			.decls = &[0]std.builtin.Type.Declaration{},
+			.fields = &newFields,
+			.is_tuple = false,
+		},
+	});
+}
+
 /// Repository insert query configuration structure.
 pub fn RepositoryInsertConfiguration(comptime InsertShape: type) type {
 	return struct {

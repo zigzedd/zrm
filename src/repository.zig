@@ -50,12 +50,15 @@ pub fn ModelKeyType(comptime Model: type, comptime TableShape: type, comptime co
 			var fieldName: [keyName.len:0]u8 = undefined;
 			@memcpy(fieldName[0..keyName.len], keyName);
 
+			// Get current field type.
+			const fieldType = std.meta.fields(TableShape)[std.meta.fieldIndex(TableShape, keyName).?].type;
+
 			field.* = .{
 				.name = &fieldName,
-				.type = std.meta.fields(TableShape)[std.meta.fieldIndex(TableShape, keyName).?].type,
+				.type = fieldType,
 				.default_value = null,
 				.is_comptime = false,
-				.alignment = 0,
+				.alignment = @alignOf(fieldType),
 			};
 		}
 

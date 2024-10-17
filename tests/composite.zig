@@ -66,8 +66,8 @@ const CompositeModelRepository = zrm.Repository(CompositeModel, CompositeModelTa
 
 	.key = &[_][]const u8{"firstcol", "secondcol"},
 
-	.fromSql = &modelFromSql,
-	.toSql = &modelToSql,
+	.fromSql = &zrm.helpers.TableModel(CompositeModel, CompositeModelTable).copyTableToModel,
+	.toSql = &zrm.helpers.TableModel(CompositeModel, CompositeModelTable).copyModelToTable,
 });
 
 

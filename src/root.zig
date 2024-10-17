@@ -17,3 +17,5 @@ pub const SqlParams = _sql.SqlParams;
 pub const conditions = @import("conditions.zig");
 
 pub const errors = @import("errors.zig");
+
+pub const helpers = @import("helpers.zig");

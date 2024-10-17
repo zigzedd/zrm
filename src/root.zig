@@ -10,7 +10,6 @@ pub const RepositoryConfiguration = repository.RepositoryConfiguration;
 pub const RepositoryResult = repository.RepositoryResult;
 
 pub const Insertable = insert.Insertable;
-pub const InsertableStruct = insert.InsertableStruct;
 
 pub const QueryParameter = _sql.QueryParameter;
 pub const SqlParams = _sql.SqlParams;

@@ -68,8 +68,8 @@ const MyModelRepository = zrm.Repository(MyModel, MyModelTable, .{
 
 	// Insert shape used by default for inserts in the repository.
 	.insertShape = struct {
-		name: zrm.Insertable([]const u8),
-		amount: zrm.Insertable(f64),
+		name: []const u8,
+		amount: f64,
 	},
 
 	.key = &[_][]const u8{"id"},

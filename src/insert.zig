@@ -7,7 +7,7 @@ const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
 
 /// Type of an insertable column. Insert shape should be composed of only these.
-pub fn Insertable(comptime ValueType: type) type {
+fn InsertableColumn(comptime ValueType: type) type {
 	return struct {
 		value: ?ValueType = null,
 		default: bool = false,
@@ -15,7 +15,7 @@ pub fn Insertable(comptime ValueType: type) type {
 }
 
 /// Build an insertable structure type from a normal structure.
-pub fn InsertableStruct(comptime StructType: type) type {
+pub fn Insertable(comptime StructType: type) type {
 	// Get type info of the given structure.
 	const typeInfo = @typeInfo(StructType);
 
@@ -23,7 +23,7 @@ pub fn InsertableStruct(comptime StructType: type) type {
 	var newFields: [typeInfo.Struct.fields.len]std.builtin.Type.StructField = undefined;
 	for (typeInfo.Struct.fields, &newFields) |field, *newField| {
 		// Create a new field for each field of the given struct.
-		const newFieldType = Insertable(field.type);
+		const newFieldType = InsertableColumn(field.type);
 		newField.* = std.builtin.Type.StructField{
 			.name = field.name,
 			.type = newFieldType,
@@ -47,7 +47,7 @@ pub fn InsertableStruct(comptime StructType: type) type {
 /// Repository insert query configuration structure.
 pub fn RepositoryInsertConfiguration(comptime InsertShape: type) type {
 	return struct {
-		values: []const InsertShape = undefined,
+		values: []const Insertable(InsertShape) = undefined,
 		returning: ?_sql.SqlParams = null,
 	};
 }
@@ -124,7 +124,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		sql: ?[]const u8 = null,
 
 		/// Parse given model or shape and put the result in newValue.
-		fn parseData(newValue: *InsertShape, value: anytype) !void {
+		fn parseData(newValue: *Insertable(InsertShape), value: anytype) !void {
 			// If the given value is a model, first convert it to its SQL equivalent.
 			if (@TypeOf(value) == Model) {
 				return parseData(newValue, try repositoryConfig.toSql(value));
@@ -137,7 +137,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 
 		/// Parse one value to insert.
 		fn parseOne(self: *Self, value: anytype) !void {
-			const newValues = try self.arena.allocator().alloc(InsertShape, 1);
+			const newValues = try self.arena.allocator().alloc(Insertable(InsertShape), 1);
 			// Parse the given value.
 			try parseData(&newValues[0], value);
 			self.insertConfig.values = newValues;
@@ -145,7 +145,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 
 		/// Parse a slice of values to insert.
 		fn parseSlice(self: *Self, value: anytype) !void {
-			const newValues = try self.arena.allocator().alloc(InsertShape, value.len);
+			const newValues = try self.arena.allocator().alloc(Insertable(InsertShape), value.len);
 			for (0..value.len) |i| {
 				// Parse each value in the given slice.
 				try parseData(&newValues[i], value[i]);

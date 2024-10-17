@@ -59,10 +59,10 @@ const CompositeModelRepository = zrm.Repository(CompositeModel, CompositeModelTa
 	.table = "composite_models",
 
 	// Insert shape used by default for inserts in the repository.
-	.insertShape = zrm.InsertableStruct(struct {
+	.insertShape = struct {
 		secondcol: []const u8,
 		label: []const u8,
-	}),
+	},
 
 	.key = &[_][]const u8{"firstcol", "secondcol"},
 

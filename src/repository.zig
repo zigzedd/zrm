@@ -114,13 +114,27 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 							.One => {
 								switch (@typeInfo(ptr.child)) {
 									// Add a whereIn with the array.
-									.Array => try modelQuery.whereIn(keyType, keyName, modelKey),
+									.Array => {
+										if (ptr.child == u8)
+											// If the child is a string, use it as a simple value.
+											try modelQuery.whereValue(KeyType, keyName, "=", modelKey)
+										else
+											// Otherwise, use it as an array.
+											try modelQuery.whereIn(keyType, keyName, modelKey);
+									},
 									// Add a simple condition with the pointed value.
 									else => try modelQuery.whereValue(keyType, keyName, "=", modelKey.*),
 								}
 							},
 							// Add a whereIn with the slice.
-							else => try modelQuery.whereIn(keyType, keyName, modelKey),
+							else => {
+								if (ptr.child == u8)
+									// If the child is a string, use it as a simple value.
+									try modelQuery.whereValue(KeyType, keyName, "=", modelKey)
+								else
+									// Otherwise, use it as an array.
+									try modelQuery.whereIn(keyType, keyName, modelKey);
+							},
 						}
 					},
 					// Add a simple condition with the given value.

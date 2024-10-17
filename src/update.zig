@@ -303,7 +303,8 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 			if (self.sql) |_| {} else { try self.buildSql(); }
 
 			// Execute query and get its result.
-			const queryResult = try self.execQuery();
+			var queryResult = try self.execQuery();
+			defer queryResult.deinit();
 
 			//TODO deduplicate this in postgresql.zig, we could do it if Mapper type was exposed.
 			//TODO make a generic mapper and do it in repository.zig?

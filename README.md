@@ -28,7 +28,7 @@ _ZRM_ provides a simple interface to relational databases in Zig. Define your re
 
 ## Versions
 
-ZRM 0.1.0 is made and tested with zig 0.13.0.
+ZRM 0.1.1 is made and tested with zig 0.13.0.
 
 ## Work in progress
 
@@ -41,7 +41,7 @@ ZRM aims to handle a lot for you, but it takes time to make. Have a look to [the
 In your project directory:
 
 ```shell
-$ zig fetch --save https://code.zeptotech.net/zedd/zrm/archive/v0.1.0.tar.gz
+$ zig fetch --save https://code.zeptotech.net/zedd/zrm/archive/v0.1.1.tar.gz
 ```
 
 In `build.zig`:

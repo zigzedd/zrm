@@ -250,7 +250,7 @@ test "repository element update" {
 
 	// Update a model's name.
 	try updateQuery.set(.{ .name = "newname" });
-	try updateQuery.whereValue(usize, "id", "=", 1);
+	try updateQuery.whereValue(usize, "id", "=", 2);
 	updateQuery.returningAll();
 
 	// Build SQL.
@@ -267,7 +267,7 @@ test "repository element update" {
 
 	// Check the updated model.
 	try std.testing.expectEqual(1, result.models.len);
-	try std.testing.expectEqual(1, result.models[0].id);
+	try std.testing.expectEqual(2, result.models[0].id);
 	try std.testing.expectEqualStrings("newname", result.models[0].name);
 }
 

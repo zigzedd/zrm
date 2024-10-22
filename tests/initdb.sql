@@ -11,6 +11,7 @@ CREATE TABLE models (
 
 -- Insert default data.
 INSERT INTO models(name, amount) VALUES ('test', 50);
+INSERT INTO models(name, amount) VALUES ('updatable', 33.12);
 
 -- Create default composite models table.
 CREATE TABLE composite_models (

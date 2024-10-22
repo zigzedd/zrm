@@ -1,4 +1,5 @@
 const global = @import("global.zig");
+const session = @import("session.zig");
 const repository = @import("repository.zig");
 const insert = @import("insert.zig");
 const _sql = @import("sql.zig");
@@ -15,6 +16,7 @@ pub const QueryParameter = _sql.QueryParameter;
 pub const SqlParams = _sql.SqlParams;
 
 pub const database = @import("database.zig");
+pub const Session = session.Session;
 
 pub const conditions = @import("conditions.zig");
 

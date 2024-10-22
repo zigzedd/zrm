@@ -37,7 +37,12 @@ pub fn handlePostgresqlError(err: anyerror, connection: *database.Connection, st
 	defer statement.deinit();
 	defer connection.release();
 
-	if (connection.connection.err) |sqlErr| {
+	return handleRawPostgresqlError(err, connection.connection);
+}
+
+/// PostgreSQL raw error handling by ZRM.
+pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
+	if (connection.err) |sqlErr| {
 		if (global.debugMode) {
 			// If debug mode is enabled, show the PostgreSQL error.
 			std.debug.print("PostgreSQL error\n{s}: {s}\n", .{sqlErr.code, sqlErr.message});

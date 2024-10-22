@@ -30,7 +30,7 @@ const MySubmodel = struct {
 };
 
 /// An example model.
-const MyModel = struct {
+pub const MyModel = struct {
 	id: i32,
 	name: []const u8,
 	amount: f64,
@@ -39,7 +39,7 @@ const MyModel = struct {
 };
 
 /// SQL table shape of the example model.
-const MyModelTable = struct {
+pub const MyModelTable = struct {
 	id: i32,
 	name: []const u8,
 	amount: f64,
@@ -64,7 +64,7 @@ fn modelToSql(model: MyModel) !MyModelTable {
 }
 
 /// Declare a model repository.
-const MyModelRepository = zrm.Repository(MyModel, MyModelTable, .{
+pub const MyModelRepository = zrm.Repository(MyModel, MyModelTable, .{
 	.table = "models",
 
 	// Insert shape used by default for inserts in the repository.

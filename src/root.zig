@@ -14,6 +14,8 @@ pub const Insertable = insert.Insertable;
 pub const QueryParameter = _sql.QueryParameter;
 pub const SqlParams = _sql.SqlParams;
 
+pub const database = @import("database.zig");
+
 pub const conditions = @import("conditions.zig");
 
 pub const errors = @import("errors.zig");

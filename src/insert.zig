@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const zollections = @import("zollections");
 const errors = @import("errors.zig");
+const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
@@ -118,7 +119,8 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		const Configuration = RepositoryInsertConfiguration(InsertShape);
 
 		arena: std.heap.ArenaAllocator,
-		database: *pg.Pool,
+		connector: database.Connector,
+		connection: *database.Connection = undefined,
 		insertConfig: Configuration,
 
 		sql: ?[]const u8 = null,
@@ -289,20 +291,19 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		/// Execute the insert query.
 		fn execQuery(self: *Self) !*pg.Result {
 			// Get a connection to the database.
-			const connection = try self.database.acquire();
-			errdefer connection.release();
+			self.connection = try self.connector.getConnection();
+			errdefer self.connection.release();
 
 			// Initialize a new PostgreSQL statement.
-			var statement = try pg.Stmt.init(connection, .{
+			var statement = try pg.Stmt.init(self.connection.connection, .{
 				.column_names = true,
-				.release_conn = true,
 				.allocator = self.arena.allocator(),
 			});
 			errdefer statement.deinit();
 
 			// Prepare SQL insert query.
 			statement.prepare(self.sql.?)
-				catch |err| return postgresql.handlePostgresqlError(err, connection, &statement);
+				catch |err| return postgresql.handlePostgresqlError(err, self.connection, &statement);
 
 			// Bind INSERT query parameters.
 			for (self.insertConfig.values) |row| {
@@ -317,7 +318,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 
 			// Execute the query and get its result.
 			const result = statement.execute()
-				catch |err| return postgresql.handlePostgresqlError(err, connection, &statement);
+				catch |err| return postgresql.handlePostgresqlError(err, self.connection, &statement);
 
 			// Query executed successfully, return the result.
 			return result;
@@ -330,6 +331,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 
 			// Execute query and get its result.
 			var queryResult = try self.execQuery();
+			defer self.connection.release();
 			defer queryResult.deinit();
 
 			//TODO deduplicate this in postgresql.zig, we could do it if Mapper type was exposed.
@@ -359,11 +361,11 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		}
 
 		/// Initialize a new repository insert query.
-		pub fn init(allocator: std.mem.Allocator, database: *pg.Pool) Self {
+		pub fn init(allocator: std.mem.Allocator, connector: database.Connector) Self {
 			return .{
 				// Initialize an arena allocator for the insert query.
 				.arena = std.heap.ArenaAllocator.init(allocator),
-				.database = database,
+				.connector = connector,
 				.insertConfig = .{},
 			};
 		}

@@ -17,6 +17,7 @@ fn initDatabase() !void {
 			.password = "zrm",
 			.database = "zrm",
 		},
+		.size = 1,
 	});
 }
 
@@ -76,6 +77,9 @@ test "composite model create, save and find" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
 	// Initialize a test model.
 	var newModel = CompositeModel{
@@ -86,7 +90,7 @@ test "composite model create, save and find" {
 
 
 	// Create the new model.
-	var result = try CompositeModelRepository.create(std.testing.allocator, database, &newModel);
+	var result = try CompositeModelRepository.create(std.testing.allocator, poolConnector.connector(), &newModel);
 	defer result.deinit(); // Will clear some values in newModel.
 
 	// Check that the model is correctly defined.
@@ -101,7 +105,7 @@ test "composite model create, save and find" {
 	// Update the model.
 	newModel.label = null;
 
-	var result2 = try CompositeModelRepository.save(std.testing.allocator, database, &newModel);
+	var result2 = try CompositeModelRepository.save(std.testing.allocator, poolConnector.connector(), &newModel);
 	defer result2.deinit(); // Will clear some values in newModel.
 
 	// Checking that the model has been updated (but only the right field).
@@ -111,7 +115,7 @@ test "composite model create, save and find" {
 
 
 	// Do another insert with the same secondcol.
-	var insertQuery = CompositeModelRepository.Insert.init(std.testing.allocator, database);
+	var insertQuery = CompositeModelRepository.Insert.init(std.testing.allocator, poolConnector.connector());
 	defer insertQuery.deinit();
 	try insertQuery.values(.{
 		.secondcol = "identifier",
@@ -128,7 +132,7 @@ test "composite model create, save and find" {
 
 
 	// Try to find the created then saved model, to check that everything has been saved correctly.
-	var result4 = try CompositeModelRepository.find(std.testing.allocator, database, .{
+	var result4 = try CompositeModelRepository.find(std.testing.allocator, poolConnector.connector(), .{
 		.firstcol = newModel.firstcol,
 		.secondcol = newModel.secondcol,
 	});
@@ -139,7 +143,7 @@ test "composite model create, save and find" {
 
 
 	// Try to find multiple models at once.
-	var result5 = try CompositeModelRepository.find(std.testing.allocator, database, &[_]CompositeModelRepository.KeyType{
+	var result5 = try CompositeModelRepository.find(std.testing.allocator, poolConnector.connector(), &[_]CompositeModelRepository.KeyType{
 		.{
 			.firstcol = newModel.firstcol,
 			.secondcol = newModel.secondcol,

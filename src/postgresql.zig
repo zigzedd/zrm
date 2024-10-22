@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const global = @import("global.zig");
 const errors = @import("errors.zig");
+const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
 
@@ -31,12 +32,12 @@ pub fn bindQueryParameter(statement: *pg.Stmt, parameter: _sql.QueryParameter) !
 }
 
 /// PostgreSQL error handling by ZRM.
-pub fn handlePostgresqlError(err: anyerror, connection: *pg.Conn, statement: *pg.Stmt) anyerror {
+pub fn handlePostgresqlError(err: anyerror, connection: *database.Connection, statement: *pg.Stmt) anyerror {
 	// Release connection and statement as query failed.
 	defer statement.deinit();
 	defer connection.release();
 
-	if (connection.err) |sqlErr| {
+	if (connection.connection.err) |sqlErr| {
 		if (global.debugMode) {
 			// If debug mode is enabled, show the PostgreSQL error.
 			std.debug.print("PostgreSQL error\n{s}: {s}\n", .{sqlErr.code, sqlErr.message});

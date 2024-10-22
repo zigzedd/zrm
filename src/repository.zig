@@ -1,6 +1,6 @@
 const std = @import("std");
-const pg = @import("pg");
 const zollections = @import("zollections");
+const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const _conditions = @import("conditions.zig");
 const query = @import("query.zig");
@@ -97,9 +97,9 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 		/// modelKey can be an array / slice of keys.
 		/// For composite keys: modelKey must be a struct with all the keys, matching the type of their corresponding field.
 		/// modelKey can be an array / slice of these structs.
-		pub fn find(allocator: std.mem.Allocator, database: *pg.Pool, modelKey: anytype) !RepositoryResult(Model) {
+		pub fn find(allocator: std.mem.Allocator, connector: database.Connector, modelKey: anytype) !RepositoryResult(Model) {
 			// Initialize a new query.
-			var modelQuery = Self.Query.init(allocator, database, .{});
+			var modelQuery = Self.Query.init(allocator, connector, .{});
 			defer modelQuery.deinit();
 
 			if (config.key.len == 1) {
@@ -179,9 +179,9 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 
 		/// Perform creation of the given new model in the repository.
 		/// The model will be altered with the inserted values.
-		pub fn create(allocator: std.mem.Allocator, database: *pg.Pool, newModel: *Model) !RepositoryResult(Model) {
+		pub fn create(allocator: std.mem.Allocator, connector: database.Connector, newModel: *Model) !RepositoryResult(Model) {
 			// Initialize a new insert query for the given model.
-			var insertQuery = Self.Insert.init(allocator, database);
+			var insertQuery = Self.Insert.init(allocator, connector);
 			defer insertQuery.deinit();
 			try insertQuery.values(newModel);
 			insertQuery.returningAll();
@@ -199,12 +199,12 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 		}
 
 		/// Perform save of the given existing model in the repository.
-		pub fn save(allocator: std.mem.Allocator, database: *pg.Pool, existingModel: *Model) !RepositoryResult(Model) {
+		pub fn save(allocator: std.mem.Allocator, connector: database.Connector, existingModel: *Model) !RepositoryResult(Model) {
 			// Convert the model to its SQL form.
 			const modelSql = try config.toSql(existingModel.*);
 
 			// Initialize a new update query for the given model.
-			var updateQuery = Self.Update(TableShape).init(allocator, database);
+			var updateQuery = Self.Update(TableShape).init(allocator, connector);
 			defer updateQuery.deinit();
 			try updateQuery.set(modelSql);
 			updateQuery.returningAll();

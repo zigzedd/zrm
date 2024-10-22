@@ -17,6 +17,7 @@ fn initDatabase() !void {
 			.password = "zrm",
 			.database = "zrm",
 		},
+		.size = 1,
 	});
 }
 
@@ -105,8 +106,11 @@ test "repository query SQL builder" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
-	var query = MyModelRepository.Query.init(std.testing.allocator, database, .{});
+	var query = MyModelRepository.Query.init(std.testing.allocator, poolConnector.connector(), .{});
 	defer query.deinit();
 	try query.whereIn(usize, "id", &[_]usize{1, 2});
 	try query.buildSql();
@@ -121,9 +125,12 @@ test "repository element retrieval" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
 	// Prepare a query for models.
-	var query = MyModelRepository.Query.init(std.testing.allocator, database, .{});
+	var query = MyModelRepository.Query.init(std.testing.allocator, poolConnector.connector(), .{});
 	try query.whereValue(usize, "id", "=", 1);
 	defer query.deinit();
 
@@ -152,8 +159,11 @@ test "repository complex SQL query" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
-	var query = MyModelRepository.Query.init(std.testing.allocator, database, .{});
+	var query = MyModelRepository.Query.init(std.testing.allocator, poolConnector.connector(), .{});
 	defer query.deinit();
 	query.where(
 		try query.newCondition().@"or"(&[_]zrm.SqlParams{
@@ -187,6 +197,9 @@ test "repository element creation" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
 	// Create a model to insert.
 	const newModel = MyModel{
@@ -196,7 +209,7 @@ test "repository element creation" {
 	};
 
 	// Initialize an insert query.
-	var insertQuery = MyModelRepository.Insert.init(std.testing.allocator, database);
+	var insertQuery = MyModelRepository.Insert.init(std.testing.allocator, poolConnector.connector());
 	defer insertQuery.deinit();
 	// Insert the new model.
 	try insertQuery.values(newModel);
@@ -225,11 +238,14 @@ test "repository element update" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
 	// Initialize an update query.
 	var updateQuery = MyModelRepository.Update(struct {
 		name: []const u8,
-	}).init(std.testing.allocator, database);
+	}).init(std.testing.allocator, poolConnector.connector());
 	defer updateQuery.deinit();
 
 	// Update a model's name.
@@ -260,6 +276,9 @@ test "model create, save and find" {
 
 	try initDatabase();
 	defer database.deinit();
+	var poolConnector = zrm.database.PoolConnector{
+		.pool = database,
+	};
 
 	// Initialize a test model.
 	var newModel = MyModel{
@@ -270,7 +289,7 @@ test "model create, save and find" {
 
 
 	// Create the new model.
-	var result = try MyModelRepository.create(std.testing.allocator, database, &newModel);
+	var result = try MyModelRepository.create(std.testing.allocator, poolConnector.connector(), &newModel);
 	defer result.deinit(); // Will clear some values in newModel.
 
 	// Check that the model is correctly defined.
@@ -284,7 +303,7 @@ test "model create, save and find" {
 	// Update the model.
 	newModel.name = "recently updated name";
 
-	var result2 = try MyModelRepository.save(std.testing.allocator, database, &newModel);
+	var result2 = try MyModelRepository.save(std.testing.allocator, poolConnector.connector(), &newModel);
 	defer result2.deinit(); // Will clear some values in newModel.
 
 	// Checking that the model has been updated (but only the right field).
@@ -296,7 +315,7 @@ test "model create, save and find" {
 	// Do another update.
 	newModel.amount = 12.226;
 
-	var result3 = try MyModelRepository.save(std.testing.allocator, database, &newModel);
+	var result3 = try MyModelRepository.save(std.testing.allocator, poolConnector.connector(), &newModel);
 	defer result3.deinit(); // Will clear some values in newModel.
 
 	// Checking that the model has been updated (but only the right field).
@@ -306,14 +325,14 @@ test "model create, save and find" {
 
 
 	// Try to find the created then saved model, to check that everything has been saved correctly.
-	var result4 = try MyModelRepository.find(std.testing.allocator, database, newModel.id);
+	var result4 = try MyModelRepository.find(std.testing.allocator, poolConnector.connector(), newModel.id);
 	defer result4.deinit(); // Will clear some values in newModel.
 
 	try std.testing.expectEqualDeep(newModel, result4.first().?.*);
 
 
 	// Try to find multiple models at once.
-	var result5 = try MyModelRepository.find(std.testing.allocator, database, &[_]i32{1, newModel.id});
+	var result5 = try MyModelRepository.find(std.testing.allocator, poolConnector.connector(), &[_]i32{1, newModel.id});
 	defer result5.deinit();
 
 	try std.testing.expectEqual(2, result5.models.len);

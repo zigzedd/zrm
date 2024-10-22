@@ -2,6 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const zollections = @import("zollections");
 const errors = @import("errors.zig");
+const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
 const conditions = @import("conditions.zig");
@@ -29,7 +30,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		const Self = @This();
 
 		arena: std.heap.ArenaAllocator,
-		database: *pg.Pool,
+		connector: database.Connector,
+		connection: *database.Connection = undefined,
 		queryConfig: RepositoryQueryConfiguration,
 
 		sql: ?[]const u8 = null,
@@ -176,23 +178,21 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		}
 
 		/// Execute the built query.
-		fn execQuery(self: *Self) !*pg.Result
-		{
-			// Get a connection to the database.
-			const connection = try self.database.acquire();
-			errdefer connection.release();
+		fn execQuery(self: *Self) !*pg.Result {
+			// Get the connection to the database.
+			self.connection = try self.connector.getConnection();
+			errdefer self.connection.release();
 
 			// Initialize a new PostgreSQL statement.
-			var statement = try pg.Stmt.init(connection, .{
+			var statement = try pg.Stmt.init(self.connection.connection, .{
 				.column_names = true,
-				.release_conn = true,
 				.allocator = self.arena.allocator(),
 			});
 			errdefer statement.deinit();
 
 			// Prepare SQL query.
 			statement.prepare(self.sql.?)
-				catch |err| return postgresql.handlePostgresqlError(err, connection, &statement);
+				catch |err| return postgresql.handlePostgresqlError(err, self.connection, &statement);
 
 			// Bind query parameters.
 			if (self.queryConfig.select) |_select|
@@ -204,7 +204,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 			// Execute the query and get its result.
 			const result = statement.execute()
-				catch |err| return postgresql.handlePostgresqlError(err, connection, &statement);
+				catch |err| return postgresql.handlePostgresqlError(err, self.connection, &statement);
 
 			// Query executed successfully, return the result.
 			return result;
@@ -217,6 +217,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 			// Execute query and get its result.
 			var queryResult = try self.execQuery();
+			defer self.connection.release();
 			defer queryResult.deinit();
 
 			//TODO deduplicate this in postgresql.zig, we could do it if Mapper type was exposed.
@@ -246,17 +247,18 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		}
 
 		/// Initialize a new repository query.
-		pub fn init(allocator: std.mem.Allocator, database: *pg.Pool, queryConfig: RepositoryQueryConfiguration) Self {
+		pub fn init(allocator: std.mem.Allocator, connector: database.Connector, queryConfig: RepositoryQueryConfiguration) Self {
 			return .{
 				// Initialize the query arena allocator.
 				.arena = std.heap.ArenaAllocator.init(allocator),
-				.database = database,
+				.connector = connector,
 				.queryConfig = queryConfig,
 			};
 		}
 
 		/// Deinitialize the repository query.
 		pub fn deinit(self: *Self) void {
+			// Free everything allocated for this query.
 			self.arena.deinit();
 		}
 	};

@@ -334,30 +334,8 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 			defer self.connection.release();
 			defer queryResult.deinit();
 
-			//TODO deduplicate this in postgresql.zig, we could do it if Mapper type was exposed.
-			//TODO make a generic mapper and do it in repository.zig?
-			// Create an arena for mapper data.
-			var mapperArena = std.heap.ArenaAllocator.init(allocator);
-			// Get result mapper.
-			const mapper = queryResult.mapper(TableShape, .{ .allocator = mapperArena.allocator() });
-
-			// Initialize models list.
-			var models = std.ArrayList(*Model).init(allocator);
-			defer models.deinit();
-
-			// Get all raw models from the result mapper.
-			while (try mapper.next()) |rawModel| {
-				// Parse each raw model from the mapper.
-				const model = try allocator.create(Model);
-				model.* = try repositoryConfig.fromSql(rawModel);
-				try models.append(model);
-			}
-
-			// Return a result with the models.
-			return repository.RepositoryResult(Model).init(allocator,
-				zollections.Collection(Model).init(allocator, try models.toOwnedSlice()),
-				mapperArena,
-			);
+			// Map query results.
+			return postgresql.mapResults(Model, TableShape, repositoryConfig, allocator, queryResult);
 		}
 
 		/// Initialize a new repository insert query.

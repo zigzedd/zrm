@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const zollections = @import("zollections");
 const global = @import("global.zig");
 const errors = @import("errors.zig");
 const database = @import("database.zig");
@@ -54,4 +55,34 @@ pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
 		// Not an SQL error, just return it.
 		return err;
 	}
+}
+
+/// Generic query results mapping.
+pub fn mapResults(comptime Model: type, comptime TableShape: type,
+	repositoryConfig: repository.RepositoryConfiguration(Model, TableShape),
+	allocator: std.mem.Allocator, queryResult: *pg.Result) !repository.RepositoryResult(Model)
+{
+	//TODO make a generic mapper and do it in repository.zig?
+	// Create an arena for mapper data.
+	var mapperArena = std.heap.ArenaAllocator.init(allocator);
+	// Get result mapper.
+	const mapper = queryResult.mapper(TableShape, .{ .allocator = mapperArena.allocator() });
+
+	// Initialize models list.
+	var models = std.ArrayList(*Model).init(allocator);
+	defer models.deinit();
+
+	// Get all raw models from the result mapper.
+	while (try mapper.next()) |rawModel| {
+		// Parse each raw model from the mapper.
+		const model = try allocator.create(Model);
+		model.* = try repositoryConfig.fromSql(rawModel);
+		try models.append(model);
+	}
+
+	// Return a result with the models.
+	return repository.RepositoryResult(Model).init(allocator,
+		zollections.Collection(Model).init(allocator, try models.toOwnedSlice()),
+		mapperArena,
+	);
 }

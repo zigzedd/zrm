@@ -26,8 +26,55 @@ const MySubmodel = struct {
 	uuid: []const u8,
 	label: []const u8,
 
+	parent_id: ?i32 = null,
 	parent: ?MyModel = null,
 };
+
+const MySubmodelTable = struct {
+	uuid: []const u8,
+	label: []const u8,
+
+	parent_id: ?i32 = null,
+};
+
+// Convert an SQL row to a model.
+fn submodelFromSql(raw: MySubmodelTable) !MySubmodel {
+	return .{
+		.uuid = raw.uuid,
+		.label = raw.label,
+		.parent_id = raw.parent_id,
+	};
+}
+
+/// Convert a model to an SQL row.
+fn submodelToSql(model: MySubmodel) !MySubmodelTable {
+	return .{
+		.uuid = model.uuid,
+		.label = model.label,
+		.parent_id = model.parent_id,
+	};
+}
+
+/// Declare a model repository.
+pub const MySubmodelRepository = zrm.Repository(MySubmodel, MySubmodelTable, .{
+	.table = "submodels",
+
+	// Insert shape used by default for inserts in the repository.
+	.insertShape = MySubmodelTable,
+
+	.key = &[_][]const u8{"uuid"},
+
+	.fromSql = &submodelFromSql,
+	.toSql = &submodelToSql,
+});
+
+pub const MySubmodelRelations = MySubmodelRepository.relations.define(.{
+	.parent = MySubmodelRepository.relations.one(MyModelRepository, .{
+		.direct = .{
+			.foreignKey = "parent_id",
+		},
+	}),
+});
 
 /// An example model.
 pub const MyModel = struct {
@@ -79,6 +126,14 @@ pub const MyModelRepository = zrm.Repository(MyModel, MyModelTable, .{
 	.toSql = &modelToSql,
 });
 
+pub const MyModelRelations = MyModelRepository.relations.define(.{
+	.submodels = MyModelRepository.relations.many(MySubmodelRepository, .{
+		.direct = .{
+			.foreignKey = "parent_id",
+		}
+	}),
+});
+
 
 test "model structures" {
 	// Initialize a test model.
@@ -115,7 +170,7 @@ test "repository query SQL builder" {
 	try query.whereIn(usize, "id", &[_]usize{1, 2});
 	try query.buildSql();
 
-	const expectedSql = "SELECT * FROM models WHERE id IN ($1,$2);";
+	const expectedSql = "SELECT \"models\".* FROM \"models\" WHERE id IN ($1,$2);";
 	try std.testing.expectEqual(expectedSql.len, query.sql.?.len);
 	try std.testing.expectEqualStrings(expectedSql, query.sql.?);
 }
@@ -138,7 +193,7 @@ test "repository element retrieval" {
 	try query.buildSql();
 
 	// Check built SQL.
-	const expectedSql = "SELECT * FROM models WHERE id = $1;";
+	const expectedSql = "SELECT \"models\".* FROM \"models\" WHERE id = $1;";
 	try std.testing.expectEqual(expectedSql.len, query.sql.?.len);
 	try std.testing.expectEqualStrings(expectedSql, query.sql.?);
 
@@ -166,11 +221,11 @@ test "repository complex SQL query" {
 	var query = MyModelRepository.Query.init(std.testing.allocator, poolConnector.connector(), .{});
 	defer query.deinit();
 	query.where(
-		try query.newCondition().@"or"(&[_]zrm.SqlParams{
+		try query.newCondition().@"or"(&[_]zrm.RawQuery{
 			try query.newCondition().value(usize, "id", "=", 1),
-			try query.newCondition().@"and"(&[_]zrm.SqlParams{
+			try query.newCondition().@"and"(&[_]zrm.RawQuery{
 				try query.newCondition().in(usize, "id", &[_]usize{100000, 200000, 300000}),
-				try query.newCondition().@"or"(&[_]zrm.SqlParams{
+				try query.newCondition().@"or"(&[_]zrm.RawQuery{
 					try query.newCondition().value(f64, "amount", ">", 12.13),
 					try query.newCondition().value([]const u8, "name", "=", "test"),
 				})
@@ -179,7 +234,7 @@ test "repository complex SQL query" {
 	);
 	try query.buildSql();
 
-	const expectedSql = "SELECT * FROM models WHERE (id = $1 OR (id IN ($2,$3,$4) AND (amount > $5 OR name = $6)));";
+	const expectedSql = "SELECT \"models\".* FROM \"models\" WHERE (id = $1 OR (id IN ($2,$3,$4) AND (amount > $5 OR name = $6)));";
 	try std.testing.expectEqual(expectedSql.len, query.sql.?.len);
 	try std.testing.expectEqualStrings(expectedSql, query.sql.?);
 

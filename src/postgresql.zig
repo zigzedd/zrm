@@ -5,6 +5,7 @@ const global = @import("global.zig");
 const errors = @import("errors.zig");
 const database = @import("database.zig");
 const _sql = @import("sql.zig");
+const _relations = @import("relations.zig");
 const repository = @import("repository.zig");
 
 /// PostgreSQL query error details.
@@ -14,7 +15,7 @@ pub const PostgresqlError = struct {
 };
 
 /// Try to bind query parameters to the statement.
-pub fn bindQueryParameters(statement: *pg.Stmt, parameters: []const _sql.QueryParameter) !void {
+pub fn bindQueryParameters(statement: *pg.Stmt, parameters: []const _sql.RawQueryParameter) !void {
 	for (parameters) |parameter| {
 		// Try to bind each parameter in the slice.
 		try bindQueryParameter(statement, parameter);
@@ -22,7 +23,7 @@ pub fn bindQueryParameters(statement: *pg.Stmt, parameters: []const _sql.QueryPa
 }
 
 /// Try to bind a query parameter to the statement.
-pub fn bindQueryParameter(statement: *pg.Stmt, parameter: _sql.QueryParameter) !void {
+pub fn bindQueryParameter(statement: *pg.Stmt, parameter: _sql.RawQueryParameter) !void {
 	switch (parameter) {
 		.integer => |integer| try statement.bind(integer),
 		.number => |number| try statement.bind(number),
@@ -57,6 +58,27 @@ pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
 	}
 }
 
+/// Make a PostgreSQL result mapper with the given prefix, if there is one.
+pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Allocator, optionalPrefix: ?[]const u8) !pg.Mapper(T) {
+	var column_indexes: [std.meta.fields(T).len]?usize = undefined;
+
+	inline for (std.meta.fields(T), 0..) |field, i| {
+		if (optionalPrefix) |prefix| {
+			const fullName = try std.fmt.allocPrint(allocator, "{s}" ++ field.name, .{prefix});
+			defer allocator.free(fullName);
+			column_indexes[i] = result.columnIndex(fullName);
+		} else {
+			column_indexes[i] = result.columnIndex(field.name);
+		}
+	}
+
+	return .{
+		.result = result,
+		.allocator = allocator,
+		.column_indexes = column_indexes,
+	};
+}
+
 /// Generic query results mapping.
 pub fn mapResults(comptime Model: type, comptime TableShape: type,
 	repositoryConfig: repository.RepositoryConfiguration(Model, TableShape),
@@ -66,7 +88,7 @@ pub fn mapResults(comptime Model: type, comptime TableShape: type,
 	// Create an arena for mapper data.
 	var mapperArena = std.heap.ArenaAllocator.init(allocator);
 	// Get result mapper.
-	const mapper = queryResult.mapper(TableShape, .{ .allocator = mapperArena.allocator() });
+	const mapper = try makeMapper(TableShape, queryResult, mapperArena.allocator(), null);
 
 	// Initialize models list.
 	var models = std.ArrayList(*Model).init(allocator);

@@ -49,7 +49,7 @@ pub fn Insertable(comptime StructType: type) type {
 pub fn RepositoryInsertConfiguration(comptime InsertShape: type) type {
 	return struct {
 		values: []const Insertable(InsertShape) = undefined,
-		returning: ?_sql.SqlParams = null,
+		returning: ?_sql.RawQuery = null,
 	};
 }
 
@@ -187,7 +187,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		}
 
 		/// Set selected columns for RETURNING clause.
-		pub fn returning(self: *Self, _select: _sql.SqlParams) void {
+		pub fn returning(self: *Self, _select: _sql.RawQuery) void {
 			self.insertConfig.returning = _select;
 		}
 
@@ -200,7 +200,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 			self.returning(.{
 				// Join selected columns.
 				.sql = std.mem.join(self.arena.allocator(), ", ", _select),
-				.params = &[_]_sql.QueryParameter{}, // No parameters.
+				.params = &[_]_sql.RawQueryParameter{}, // No parameters.
 			});
 		}
 
@@ -208,7 +208,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		pub fn returningAll(self: *Self) void {
 			self.returning(.{
 				.sql = "*",
-				.params = &[_]_sql.QueryParameter{}, // No parameters.
+				.params = &[_]_sql.RawQueryParameter{}, // No parameters.
 			});
 		}
 
@@ -236,56 +236,53 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 			) else 0;
 
 			// Initialize SQL buffer.
-			const sqlBuf = try self.arena.allocator().alloc(u8, fixedSqlSize + valuesSqlSize + returningSize);
+			var sqlBuf = try std.ArrayList(u8).initCapacity(self.arena.allocator(), fixedSqlSize + valuesSqlSize + returningSize);
+			defer sqlBuf.deinit();
 
 			// Append initial "INSERT INTO table VALUES ".
-			@memcpy(sqlBuf[0..sqlBase.len],sqlBase);
-			var sqlBufCursor: usize = sqlBase.len;
+			try sqlBuf.appendSlice(sqlBase);
 
 			// Start parameter counter at 1.
 			var currentParameter: usize = 1;
 
 			if (self.insertConfig.values.len == 0) {
 				// No values, output an empty values set.
-				std.mem.copyForwards(u8, sqlBuf[sqlBufCursor..sqlBufCursor+2], "()");
-				sqlBufCursor += 2;
+				try sqlBuf.appendSlice("()");
 			} else {
 				// Build values set.
 				for (self.insertConfig.values) |_| {
 					// Add the first '('.
-					sqlBuf[sqlBufCursor] = '('; sqlBufCursor += 1;
+					try sqlBuf.append('(');
 					inline for (columns) |_| {
 						// Create the parameter string and append it to the SQL buffer.
-						const paramSize = 1 + try _sql.computeRequiredSpaceForParameter(currentParameter) + 1;
-						_ = try std.fmt.bufPrint(sqlBuf[sqlBufCursor..sqlBufCursor+paramSize], "${d},", .{currentParameter});
-						sqlBufCursor += paramSize;
+						try sqlBuf.writer().print("${d},", .{currentParameter});
 						// Increment parameter count.
 						currentParameter += 1;
 					}
 					// Replace the final ',' with a ')'.
-					sqlBuf[sqlBufCursor - 1] = ')';
+					sqlBuf.items[sqlBuf.items.len - 1] = ')';
 					// Add the final ','.
-					sqlBuf[sqlBufCursor] = ','; sqlBufCursor += 1;
+					try sqlBuf.append(',');
 				}
-				sqlBufCursor -= 1;
+
+				// Remove the last ','.
+				_ = sqlBuf.pop();
 			}
 
 			// Append RETURNING clause, if there is one defined.
 			if (self.insertConfig.returning) |_returning| {
-				@memcpy(sqlBuf[sqlBufCursor..sqlBufCursor+(1 + returningClause.len + 1)], " " ++ returningClause ++ " ");
+				try sqlBuf.appendSlice(" " ++ returningClause ++ " ");
 				// Copy RETURNING clause content and replace parameters, if there are some.
 				try _sql.copyAndReplaceSqlParameters(&currentParameter,
-					_returning.params.len,
-					sqlBuf[sqlBufCursor+(1+returningClause.len+1)..sqlBufCursor+returningSize], _returning.sql
+					_returning.params.len, sqlBuf.writer(), _returning.sql
 				);
-				sqlBufCursor += returningSize;
 			}
 
 			// ";" to end the query.
-			sqlBuf[sqlBufCursor] = ';'; sqlBufCursor += 1;
+			try sqlBuf.append(';');
 
 			// Save built SQL query.
-			self.sql = sqlBuf;
+			self.sql = try sqlBuf.toOwnedSlice();
 		}
 
 		/// Execute the insert query.

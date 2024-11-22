@@ -3,6 +3,7 @@ const zollections = @import("zollections");
 const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const _conditions = @import("conditions.zig");
+const _relations = @import("relations.zig");
 const query = @import("query.zig");
 const insert = @import("insert.zig");
 const update = @import("update.zig");
@@ -73,16 +74,83 @@ pub fn ModelKeyType(comptime Model: type, comptime TableShape: type, comptime co
 	}
 }
 
+/// Model relations definition type.
+pub fn RelationsDefinitionType(comptime rawDefinition: anytype) type {
+	const rawDefinitionType = @typeInfo(@TypeOf(rawDefinition));
+
+	// Build model relations fields.
+	var fields: [rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
+	inline for (rawDefinitionType.Struct.fields, &fields) |originalField, *field| {
+		field.* = .{
+			.name = originalField.name,
+			.type = _relations.ModelRelation,
+			.default_value = null,
+			.is_comptime = false,
+			.alignment = @alignOf(_relations.ModelRelation),
+		};
+	}
+
+	// Return built type.
+	return @Type(.{
+		.Struct = std.builtin.Type.Struct{
+			.layout = std.builtin.Type.ContainerLayout.auto,
+			.fields = &fields,
+			.decls = &[_]std.builtin.Type.Declaration{},
+			.is_tuple = false,
+		},
+	});
+}
+
 /// Repository of structures of a certain type.
-pub fn Repository(comptime Model: type, comptime TableShape: type, comptime config: RepositoryConfiguration(Model, TableShape)) type {
+pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: RepositoryConfiguration(Model, TableShape)) type {
 	return struct {
 		const Self = @This();
+
+		pub const ModelType = Model;
+		pub const TableType = TableShape;
+		pub const config = repositoryConfig;
 
 		pub const Query: type = query.RepositoryQuery(Model, TableShape, config);
 		pub const Insert: type = insert.RepositoryInsert(Model, TableShape, config, config.insertShape);
 
 		/// Type of one model key.
 		pub const KeyType = ModelKeyType(Model, TableShape, config);
+
+		pub const relations = struct {
+			/// Make a "one to one" relation.
+			pub fn one(comptime toRepo: anytype, comptime oneConfig: _relations.OneConfiguration) type {
+				return _relations.one(Self, toRepo, oneConfig);
+			}
+
+			/// Make a "one to many" or "many to many" relation.
+			pub fn many(comptime toRepo: anytype, comptime manyConfig: _relations.ManyConfiguration) type {
+				return _relations.many(Self, toRepo, manyConfig);
+			}
+
+			/// Define a relations object for a repository.
+			pub fn define(rawDefinition: anytype) RelationsDefinitionType(rawDefinition) {
+				const rawDefinitionType = @TypeOf(rawDefinition);
+
+				// Initialize final relations definition.
+				var definition: RelationsDefinitionType(rawDefinition) = undefined;
+
+				// Check that the definition structure only include known fields.
+				inline for (std.meta.fieldNames(rawDefinitionType)) |fieldName| {
+					if (!@hasField(Model, fieldName)) {
+						@compileError("No corresponding field for relation " ++ fieldName);
+					}
+
+					// Alter definition structure to add the field name.
+					@field(definition, fieldName) = .{
+						.relation = @field(rawDefinition, fieldName),
+						.field = fieldName,
+					};
+				}
+
+				// Return altered definition structure.
+				return definition;
+			}
+		};
 
 		pub fn InsertCustom(comptime InsertShape: type) type {
 			return insert.RepositoryInsert(Model, TableShape, config, InsertShape);
@@ -102,76 +170,7 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 			var modelQuery = Self.Query.init(allocator, connector, .{});
 			defer modelQuery.deinit();
 
-			if (config.key.len == 1) {
-				// Find key name and its type.
-				const keyName = config.key[0];
-				const keyType = std.meta.fields(TableShape)[std.meta.fieldIndex(TableShape, keyName).?].type;
-
-				// Accept arrays / slices of keys, and simple keys.
-				switch (@typeInfo(@TypeOf(modelKey))) {
-					.Pointer => |ptr| {
-						switch (ptr.size) {
-							.One => {
-								switch (@typeInfo(ptr.child)) {
-									// Add a whereIn with the array.
-									.Array => {
-										if (ptr.child == u8)
-											// If the child is a string, use it as a simple value.
-											try modelQuery.whereValue(KeyType, keyName, "=", modelKey)
-										else
-											// Otherwise, use it as an array.
-											try modelQuery.whereIn(keyType, keyName, modelKey);
-									},
-									// Add a simple condition with the pointed value.
-									else => try modelQuery.whereValue(keyType, keyName, "=", modelKey.*),
-								}
-							},
-							// Add a whereIn with the slice.
-							else => {
-								if (ptr.child == u8)
-									// If the child is a string, use it as a simple value.
-									try modelQuery.whereValue(KeyType, keyName, "=", modelKey)
-								else
-									// Otherwise, use it as an array.
-									try modelQuery.whereIn(keyType, keyName, modelKey);
-							},
-						}
-					},
-					// Add a simple condition with the given value.
-					else => try modelQuery.whereValue(keyType, keyName, "=", modelKey),
-				}
-			} else {
-				// Accept arrays / slices of keys, and simple keys.
-				// Uniformize modelKey parameter to a slice.
-				const modelKeysList: []const Self.KeyType = switch (@typeInfo(@TypeOf(modelKey))) {
-					.Pointer => |ptr| switch (ptr.size) {
-						.One => switch (@typeInfo(ptr.child)) {
-							// Already an array.
-							.Array => @as([]const Self.KeyType, modelKey),
-							// Convert the pointer to an array.
-							else => &[1]Self.KeyType{@as(Self.KeyType, modelKey.*)},
-						},
-						// Already a slice.
-						else => @as([]const Self.KeyType, modelKey),
-					},
-					// Convert the value to an array.
-					else => &[1]Self.KeyType{@as(Self.KeyType, modelKey)},
-				};
-
-				// Initialize keys conditions list.
-				const conditions: []_sql.SqlParams = try allocator.alloc(_sql.SqlParams, modelKeysList.len);
-				defer allocator.free(conditions);
-
-				// For each model key, add its conditions.
-				for (modelKeysList, conditions) |_modelKey, *condition| {
-					condition.* = try modelQuery.newCondition().@"and"(
-						&try buildCompositeKeysConditions(TableShape, config.key, modelQuery.newCondition(), _modelKey)
-					);
-				}
-
-				// Set WHERE conditions in the query with all keys conditions.
-				modelQuery.where(try modelQuery.newCondition().@"or"(conditions));
-			}
+			try modelQuery.whereKey(modelKey);
 
 			// Execute query and return its result.
 			return try modelQuery.get(allocator);
@@ -210,7 +209,7 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime conf
 			updateQuery.returningAll();
 
 			// Initialize conditions array.
-			var conditions: [config.key.len]_sql.SqlParams = undefined;
+			var conditions: [config.key.len]_sql.RawQuery = undefined;
 			inline for (config.key, &conditions) |keyName, *condition| {
 				// Add a where condition for each key.
 				condition.* = try updateQuery.newCondition().value(@TypeOf(@field(modelSql, keyName)), keyName, "=", @field(modelSql, keyName));
@@ -270,25 +269,4 @@ pub fn RepositoryResult(comptime Model: type) type {
 			self.mapperArena.deinit();
 		}
 	};
-}
-
-/// Build conditions for given composite keys, with a model key structure.
-pub fn buildCompositeKeysConditions(comptime TableShape: type, comptime keys: []const []const u8, conditionsBuilder: _conditions.Builder, modelKey: anytype) ![keys.len]_sql.SqlParams {
-	// Conditions list for all keys in the composite key.
-	var conditions: [keys.len]_sql.SqlParams = undefined;
-
-	inline for (keys, &conditions) |keyName, *condition| {
-		const keyType = std.meta.fields(TableShape)[std.meta.fieldIndex(TableShape, keyName).?].type;
-
-		if (std.meta.fieldIndex(@TypeOf(modelKey), keyName)) |_| {
-			// The field exists in the key structure, create its condition.
-			condition.* = try conditionsBuilder.value(keyType, keyName, "=", @field(modelKey, keyName));
-		} else {
-			// The field doesn't exist, compilation error.
-			@compileError("The key structure must include a field for " ++ keyName);
-		}
-	}
-
-	// Return conditions for the current model key.
-	return conditions;
 }

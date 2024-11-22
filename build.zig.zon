@@ -10,16 +10,10 @@
 			.hash = "12200fe147879d72381633e6f44d76db2c8a603cda1969b4e474c15c31052dbb24b7",
 		},
 		.pg = .{
-			.url = "git+https://github.com/karlseguin/pg.zig?ref=zig-0.13#239a4468163a49d8c0d03285632eabe96003e9e2",
-			.hash = "1220a1d7e51e2fa45e547c76a9e099c09d06e14b0b9bfc6baa89367f56f1ded399a0",
+			.url = "git+https://github.com/Madeorsk/pg.zig?ref=expose-mapper-zig-0.13#11c91a714858c517539069fca620918c77a771c7",
+			.hash = "122047c505cca855c4fb2c831bc6056527175bbd111fe2dc77488799b576da213075",
 		},
 	},
 
-	.paths = .{
-		"build.zig",
-		"build.zig.zon",
-		"src",
-		"README.md",
-		"LICENSE"
-	},
+	.paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "LICENSE" },
 }

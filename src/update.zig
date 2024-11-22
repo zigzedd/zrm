@@ -12,8 +12,8 @@ const repository = @import("repository.zig");
 pub fn RepositoryUpdateConfiguration(comptime UpdateShape: type) type {
 	return struct {
 		value: ?UpdateShape = null,
-		where: ?_sql.SqlParams = null,
-		returning: ?_sql.SqlParams = null,
+		where: ?_sql.RawQuery = null,
+		returning: ?_sql.RawQuery = null,
 	};
 }
 
@@ -113,7 +113,7 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 		}
 
 		/// Set WHERE conditions.
-		pub fn where(self: *Self, _where: _sql.SqlParams) void {
+		pub fn where(self: *Self, _where: _sql.RawQuery) void {
 			self.updateConfig.where = _where;
 		}
 
@@ -144,7 +144,7 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 		}
 
 		/// Set selected columns for RETURNING clause.
-		pub fn returning(self: *Self, _select: _sql.SqlParams) void {
+		pub fn returning(self: *Self, _select: _sql.RawQuery) void {
 			self.updateConfig.returning = _select;
 		}
 
@@ -157,7 +157,7 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 			self.returning(.{
 				// Join selected columns.
 				.sql = std.mem.join(self.arena.allocator(), ", ", _select),
-				.params = &[_]_sql.QueryParameter{}, // No parameters.
+				.params = &[_]_sql.RawQueryParameter{}, // No parameters.
 			});
 		}
 
@@ -165,7 +165,7 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 		pub fn returningAll(self: *Self) void {
 			self.returning(.{
 				.sql = "*",
-				.params = &[_]_sql.QueryParameter{}, // No parameters.
+				.params = &[_]_sql.RawQueryParameter{}, // No parameters.
 			});
 		}
 
@@ -203,61 +203,53 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 			}
 
 			// Allocate SQL buffer from computed size.
-			const sqlBuf = try self.arena.allocator().alloc(u8, fixedSqlSize
+			var sqlBuf = try std.ArrayList(u8).initCapacity(self.arena.allocator(), fixedSqlSize
 				+ (setSize)
 				+ (whereSize)
 				+ (returningSize)
 			);
-
-			// Fill SQL buffer.
+			defer sqlBuf.deinit();
 
 			// Restart parameter counter at 1.
 			currentParameter = 1;
 
 			// SQL query initialisation.
-			@memcpy(sqlBuf[0..sqlBase.len], sqlBase);
-			var sqlBufCursor: usize = sqlBase.len;
+			try sqlBuf.appendSlice(sqlBase);
 
 			// Add SET columns values.
 			inline for (columns) |column| {
 				// Create the SET string and append it to the SQL buffer.
-				const setColumnSize = column.len + 1 + 1 + try _sql.computeRequiredSpaceForParameter(currentParameter) + 1;
-				_ = try std.fmt.bufPrint(sqlBuf[sqlBufCursor..sqlBufCursor+setColumnSize], "{s}=${d},", .{column, currentParameter});
-				sqlBufCursor += setColumnSize;
+				try sqlBuf.writer().print("{s}=${d},", .{column, currentParameter});
 				// Increment parameter count.
 				currentParameter += 1;
 			}
 
 			// Overwrite the last ','.
-			sqlBufCursor -= 1;
+			_ = sqlBuf.pop();
 
 			// WHERE clause.
 			if (self.updateConfig.where) |_where| {
-				@memcpy(sqlBuf[sqlBufCursor..sqlBufCursor+(1 + whereClause.len + 1)], " " ++ whereClause ++ " ");
+				try sqlBuf.appendSlice(" " ++ whereClause ++ " ");
 				// Copy WHERE clause content and replace parameters, if there are some.
 				try _sql.copyAndReplaceSqlParameters(&currentParameter,
-					_where.params.len,
-					sqlBuf[sqlBufCursor+(1+whereClause.len+1)..sqlBufCursor+whereSize], _where.sql
+					_where.params.len, sqlBuf.writer(), _where.sql
 				);
-				sqlBufCursor += whereSize;
 			}
 
 			// Append RETURNING clause, if there is one defined.
 			if (self.updateConfig.returning) |_returning| {
-				@memcpy(sqlBuf[sqlBufCursor..sqlBufCursor+(1 + returningClause.len + 1)], " " ++ returningClause ++ " ");
+				try sqlBuf.appendSlice(" " ++ returningClause ++ " ");
 				// Copy RETURNING clause content and replace parameters, if there are some.
 				try _sql.copyAndReplaceSqlParameters(&currentParameter,
-					_returning.params.len,
-					sqlBuf[sqlBufCursor+(1+returningClause.len+1)..sqlBufCursor+returningSize], _returning.sql
+					_returning.params.len, sqlBuf.writer(), _returning.sql
 				);
-				sqlBufCursor += returningSize;
 			}
 
 			// ";" to end the query.
-			sqlBuf[sqlBufCursor] = ';'; sqlBufCursor += 1;
+			try sqlBuf.append(';');
 
 			// Save built SQL query.
-			self.sql = sqlBuf;
+			self.sql = try sqlBuf.toOwnedSlice();
 		}
 
 		/// Execute the update query.

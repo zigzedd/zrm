@@ -39,9 +39,9 @@ test "zrm.conditions combined" {
 	var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
 	defer arena.deinit();
 
-	const condition = try zrm.conditions.@"and"(arena.allocator(), &[_]zrm.SqlParams{
+	const condition = try zrm.conditions.@"and"(arena.allocator(), &[_]zrm.RawQuery{
 		try zrm.conditions.value(usize, arena.allocator(), "test", "=", 5),
-		try zrm.conditions.@"or"(arena.allocator(), &[_]zrm.SqlParams{
+		try zrm.conditions.@"or"(arena.allocator(), &[_]zrm.RawQuery{
 			try zrm.conditions.in(usize, arena.allocator(), "intest", &[_]usize{2, 3, 8}),
 			try zrm.conditions.column(arena.allocator(), "firstcol", "<>", "secondcol"),
 		}),

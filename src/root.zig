@@ -12,8 +12,10 @@ pub const RepositoryResult = repository.RepositoryResult;
 
 pub const Insertable = insert.Insertable;
 
-pub const QueryParameter = _sql.QueryParameter;
-pub const SqlParams = _sql.SqlParams;
+pub const relations = @import("relations.zig");
+
+pub const RawQueryParameter = _sql.RawQueryParameter;
+pub const RawQuery = _sql.RawQuery;
 
 pub const database = @import("database.zig");
 pub const Session = session.Session;

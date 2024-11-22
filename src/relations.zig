@@ -62,8 +62,7 @@ pub fn typedMany(
 	};
 
 	const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
-	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig);
-	const SelectBuilder = _sql.SelectBuilder(ToTable);
+	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null);
 
 	return struct {
 		const Self = @This();
@@ -72,12 +71,12 @@ pub fn typedMany(
 			return false;
 		}
 
-		fn genJoin(_: *anyopaque, _: std.mem.Allocator, _: []const u8) !_sql.RawQuery {
+		fn genJoin(_: *anyopaque, comptime _: []const u8) []const u8 {
 			unreachable; // No possible join in a many relation.
 		}
 
-		fn genSelect(_: *anyopaque, allocator: std.mem.Allocator, table: []const u8, prefix: []const u8) ![]const u8 {
-			return SelectBuilder.build(allocator, table, prefix);
+		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+			return _sql.SelectBuild(ToTable, table, prefix);
 		}
 
 		fn buildQuery(_: *anyopaque, opaqueModels: []const anyopaque, opaqueQuery: *anyopaque) !void {
@@ -181,8 +180,7 @@ fn typedOne(
 	comptime config: OneConfiguration) type {
 
 	const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
-	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig);
-	const SelectBuilder = _sql.SelectBuilder(ToTable);
+	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null);
 
 	// Get foreign key from relation config or repository config.
 	const foreignKey = switch (config) {
@@ -205,32 +203,29 @@ fn typedOne(
 			return true;
 		}
 
-		fn genJoin(_: *anyopaque, allocator: std.mem.Allocator, alias: []const u8) !_sql.RawQuery {
+		fn genJoin(_: *anyopaque, comptime alias: []const u8) []const u8 {
 			return switch (config) {
-				.direct => (.{
-					.sql = try std.fmt.allocPrint(allocator, "LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"{s}\" ON " ++
-						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = \"{s}\"." ++ modelKey, .{alias, alias}),
-					.params = &[0]_sql.RawQueryParameter{},
-				}),
+				.direct => (
+					"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
+						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = \"" ++ alias ++ "\"." ++ modelKey
+				),
 
-				.reverse => (.{
-					.sql = try std.fmt.allocPrint(allocator, "LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"{s}\" ON " ++
-						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"{s}\"." ++ foreignKey, .{alias, alias}),
-					.params = &[0]_sql.RawQueryParameter{},
-				}),
+				.reverse => (
+					"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
+						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"" ++ alias ++ "\"." ++ foreignKey
+				),
 
-				.through => |through| (.{
-					.sql = try std.fmt.allocPrint(allocator, "LEFT JOIN \"" ++ through.table ++ "\" AS \"{s}_pivot\" ON " ++
-						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = " ++ "\"{s}_pivot\"." ++ through.joinForeignKey ++
-						"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"{s}\" ON " ++
-						"\"{s}_pivot\"." ++ through.joinModelKey ++ " = " ++ "\"{s}\"." ++ modelKey, .{alias, alias, alias, alias, alias}),
-					.params = &[0]_sql.RawQueryParameter{},
-				}),
+				.through => |through| (
+					"LEFT JOIN \"" ++ through.table ++ "\" AS \"" ++ alias ++ "_pivot\" ON " ++
+						"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = " ++ "\"" ++ alias ++ "_pivot\"." ++ through.joinForeignKey ++
+					"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
+						"\"" ++ alias ++ "_pivot\"." ++ through.joinModelKey ++ " = " ++ "\"" ++ alias ++ "\"." ++ modelKey
+				),
 			};
 		}
 
-		fn genSelect(_: *anyopaque, allocator: std.mem.Allocator, table: []const u8, prefix: []const u8) ![]const u8 {
-			return SelectBuilder.build(allocator, table, prefix);
+		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+			return _sql.SelectBuild(ToTable, table, prefix);
 		}
 
 		fn buildQuery(_: *anyopaque, opaqueModels: []const anyopaque, opaqueQuery: *anyopaque) !void {
@@ -296,8 +291,8 @@ pub const Relation = struct {
 		instance: *anyopaque,
 
 		inlineMapping: *const fn (self: *anyopaque) bool,
-		genJoin: *const fn (self: *anyopaque, allocator: std.mem.Allocator, alias: []const u8) anyerror!_sql.RawQuery,
-		genSelect: *const fn (self: *anyopaque, allocator: std.mem.Allocator, table: []const u8, prefix: []const u8) anyerror![]const u8,
+		genJoin: *const fn (self: *anyopaque, comptime alias: []const u8) []const u8,
+		genSelect: *const fn (self: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8,
 		buildQuery: *const fn (self: *anyopaque, models: []const anyopaque, query: *anyopaque) anyerror!void,
 	},
 
@@ -308,13 +303,13 @@ pub const Relation = struct {
 	}
 
 	/// In case of inline mapping, generate a JOIN clause to retrieve the associated data.
-	pub fn genJoin(self: Self, allocator: std.mem.Allocator, alias: []const u8) !_sql.RawQuery {
-		return self._interface.genJoin(self._interface.instance, allocator, alias);
+	pub fn genJoin(self: Self, comptime alias: []const u8) []const u8 {
+		return self._interface.genJoin(self._interface.instance, alias);
 	}
 
 	/// Generate a SELECT clause to retrieve the associated data, with the given table and prefix.
-	pub fn genSelect(self: Self, allocator: std.mem.Allocator, table: []const u8, prefix: []const u8) ![]const u8 {
-		return self._interface.genSelect(self._interface.instance, allocator, table, prefix);
+	pub fn genSelect(self: Self, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+		return self._interface.genSelect(self._interface.instance, table, prefix);
 	}
 
 	/// Build the query to retrieve relation data.

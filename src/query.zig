@@ -8,25 +8,71 @@ const _sql = @import("sql.zig");
 const _conditions = @import("conditions.zig");
 const relations = @import("relations.zig");
 const repository = @import("repository.zig");
-
-const InlineRelationsResult = struct {
-
-};
+const _comptime = @import("comptime.zig");
 
 /// Repository query configuration structure.
 pub const RepositoryQueryConfiguration = struct {
 	select: ?_sql.RawQuery = null,
 	join: ?_sql.RawQuery = null,
 	where: ?_sql.RawQuery = null,
-	with: ?[]const relations.Eager = null,
+};
+
+/// Compiled relations structure.
+const CompiledRelations = struct {
+	inlineSelect: []const u8,
+	inlineJoins: []const u8,
 };
 
 /// Repository models query manager.
 /// Manage query string build and its execution.
-pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape)) type {
-	// Pre-compute SQL buffer size.
+pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.ModelRelation) type {
+	const compiledRelations = comptime compile: {
+		// Inline relations list.
+		var inlineRelations: []relations.ModelRelation = &[0]relations.ModelRelation{};
+
+		if (with) |_with| {
+			// If there are relations to eager load, prepare their query.
+
+			// Initialize inline select array.
+			var inlineSelect: [][]const u8 = &[0][]const u8{};
+			// Initialize inline joins array.
+			var inlineJoins: [][]const u8 = &[0][]const u8{};
+
+			for (_with) |relation| {
+				// For each relation, determine if it's inline or not.
+				var tt = relation.relation{};
+				const relationInstance = tt.relation();
+				if (relationInstance.inlineMapping()) {
+					// Add the current relation to inline relations.
+					inlineRelations = @ptrCast(@constCast(_comptime.append(inlineRelations, relation)));
+
+					// Build table alias and fields prefix for the relation.
+					const tableAlias = "relations." ++ relation.field;
+					const fieldsPrefix = tableAlias ++ ".";
+
+					// Generate selected columns for the relation.
+					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relationInstance.genSelect(tableAlias, fieldsPrefix))));
+					// Generate joined table for the relation.
+					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relationInstance.genJoin(tableAlias))));
+				}
+			}
+
+			break :compile CompiledRelations{
+				.inlineSelect = if (inlineSelect.len > 0) ", " ++ _comptime.join(", ", inlineSelect) else "",
+				.inlineJoins = if (inlineJoins.len > 0) " " ++ _comptime.join(" ", inlineJoins) else "",
+			};
+		} else {
+			break :compile CompiledRelations{
+				.inlineSelect = "",
+				.inlineJoins = "",
+			};
+		}
+	};
+
+	// Pre-compute SQL buffer.
 	const fromClause = " FROM \"" ++ repositoryConfig.table ++ "\"";
-	const defaultSelectSql = "\"" ++ repositoryConfig.table ++ "\".*";
+	const defaultSelectSql = "\"" ++ repositoryConfig.table ++ "\".*" ++ compiledRelations.inlineSelect;
+	const defaultJoin = compiledRelations.inlineJoins;
 
 	// Model key type.
 	const KeyType = repository.ModelKeyType(Model, TableShape, repositoryConfig);
@@ -38,9 +84,6 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		connector: database.Connector,
 		connection: *database.Connection = undefined,
 		queryConfig: RepositoryQueryConfiguration,
-
-		/// List of loaded inline relations.
-		inlineRelations: []relations.Eager = undefined,
 
 		query: ?_sql.RawQuery = null,
 		sql: ?[]const u8 = null,
@@ -177,103 +220,16 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			}
 		}
 
-		/// Set relations to eager load.
-		pub fn with(self: *Self, relation: relations.ModelRelation) !void {
-			// Take an array of eager relations (which can have subrelations).
-			const allocator = self.arena.allocator();
-
-			// Make a relation instance.
-			const relationInstance = try allocator.create(relation.relation);
-
-			// Add the new relation to a newly allocated array, with one more space.
-			const newPos = if (self.queryConfig.with) |_with| _with.len else 0;
-			var newWith = try allocator.alloc(relations.Eager, newPos + 1);
-			newWith[newPos] = .{
-				.field = relation.field,
-				.relation = relationInstance.*.relation(),
-				.with = &[0]relations.Eager{}, //TODO handle subrelations with dotted syntax
-			};
-
-			if (self.queryConfig.with) |_with| {
-				// Copy existing relations.
-				@memcpy(newWith[0..newPos], _with);
-				// Free previous array.
-				allocator.free(_with);
-			}
-
-			// Save the newly allocated array.
-			self.queryConfig.with = newWith;
-		}
-
-		/// Build inline relations query part.
-		fn buildInlineRelations(self: *Self) !?struct{
-			select: []const u8,
-			join: _sql.RawQuery,
-		} {
-			if (self.queryConfig.with) |_with| {
-				// Initialize an ArrayList of query parts for relations.
-				var inlineRelations = try std.ArrayList(_sql.RawQuery).initCapacity(self.arena.allocator(), _with.len);
-				defer inlineRelations.deinit();
-				var inlineRelationsSelect = try std.ArrayList([]const u8).initCapacity(self.arena.allocator(), _with.len);
-				defer inlineRelationsSelect.deinit();
-
-				// Initialize an ArrayList to store all loaded inline relations.
-				var loadedRelations = std.ArrayList(relations.Eager).init(self.arena.allocator());
-				defer loadedRelations.deinit();
-
-				for (_with) |_relation| {
-					// Append each inline relation to the ArrayList.
-					if (_relation.relation.inlineMapping()) {
-						try loadedRelations.append(_relation); // Store the loaded inline relation.
-
-						// Get an allocator for local allocations.
-						const localAllocator = self.arena.allocator();
-
-						// Build table alias and fields prefix.
-						const tableAlias = try std.fmt.allocPrint(localAllocator, "relations.{s}", .{_relation.field});
-						defer localAllocator.free(tableAlias);
-						const prefix = try std.fmt.allocPrint(localAllocator, "{s}.", .{tableAlias});
-						defer localAllocator.free(prefix);
-
-						// Alter query to get relation fields.
-						try inlineRelations.append(try _relation.relation.genJoin(self.arena.allocator(), tableAlias));
-						const relationSelect = try _relation.relation.genSelect(localAllocator, tableAlias, prefix);
-						try inlineRelationsSelect.append(relationSelect);
-					}
-				}
-
-				self.inlineRelations = try loadedRelations.toOwnedSlice();
-
-				// Return the inline relations query part.
-				return .{
-					.select = try std.mem.join(self.arena.allocator(), ", ", inlineRelationsSelect.items),
-					.join = try _sql.RawQuery.fromConcat(self.arena.allocator(), inlineRelations.items),
-				};
-			} else {
-				// Nothing.
-				return null;
-			}
-		}
-
 		/// Build SQL query.
 		pub fn buildSql(self: *Self) !void {
-			// Build inline relations query part.
-			const inlineRelations = try self.buildInlineRelations();
-			defer if (inlineRelations) |_inlineRelations| self.arena.allocator().free(_inlineRelations.join.sql);
-			defer if (inlineRelations) |_inlineRelations| self.arena.allocator().free(_inlineRelations.join.params);
-			defer if (inlineRelations) |_inlineRelations| self.arena.allocator().free(_inlineRelations.select);
-
 			// Build the full SQL query from all its parts.
 			const sqlQuery = _sql.RawQuery{
 				.sql = try std.mem.join(self.arena.allocator(), "", &[_][]const u8{
 					"SELECT ", if (self.queryConfig.select) |_select| _select.sql else defaultSelectSql,
-					if (inlineRelations) |_| ", " else "",
-					if (inlineRelations) |_inlineRelations| _inlineRelations.select else "",
 					fromClause,
+					defaultJoin,
 					if (self.queryConfig.join) |_| " " else "",
 					if (self.queryConfig.join) |_join| _join.sql else "",
-					if (inlineRelations) |_| " " else "",
-					if (inlineRelations) |_inlineRelations| _inlineRelations.join.sql else "",
 					if (self.queryConfig.where) |_| " WHERE " else "",
 					if (self.queryConfig.where) |_where| _where.sql else "",
 					";",
@@ -281,7 +237,6 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 				.params = try std.mem.concat(self.arena.allocator(), _sql.RawQueryParameter, &[_][]const _sql.RawQueryParameter{
 					if (self.queryConfig.select) |_select| _select.params else &[0]_sql.RawQueryParameter{},
 					if (self.queryConfig.join) |_join| _join.params else &[0]_sql.RawQueryParameter{},
-					if (inlineRelations) |_inlineRelations| _inlineRelations.join.params else &[0]_sql.RawQueryParameter{},
 					if (self.queryConfig.where) |_where| _where.params else &[0]_sql.RawQueryParameter{},
 				})
 			};

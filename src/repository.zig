@@ -110,7 +110,7 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 		pub const TableType = TableShape;
 		pub const config = repositoryConfig;
 
-		pub const Query: type = query.RepositoryQuery(Model, TableShape, config);
+		pub const Query: type = query.RepositoryQuery(Model, TableShape, config, null);
 		pub const Insert: type = insert.RepositoryInsert(Model, TableShape, config, config.insertShape);
 
 		/// Type of one model key.
@@ -151,6 +151,10 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 				return definition;
 			}
 		};
+
+		pub fn QueryWith(comptime with: []const _relations.ModelRelation) type {
+			return query.RepositoryQuery(Model, TableShape, config, with);
+		}
 
 		pub fn InsertCustom(comptime InsertShape: type) type {
 			return insert.RepositoryInsert(Model, TableShape, config, InsertShape);

@@ -7,6 +7,7 @@ const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const _relations = @import("relations.zig");
 const repository = @import("repository.zig");
+const _result = @import("result.zig");
 
 /// PostgreSQL query error details.
 pub const PostgresqlError = struct {
@@ -79,32 +80,58 @@ pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Alloc
 	};
 }
 
-/// Generic query results mapping.
-pub fn mapResults(comptime Model: type, comptime TableShape: type,
-	repositoryConfig: repository.RepositoryConfiguration(Model, TableShape),
-	allocator: std.mem.Allocator, queryResult: *pg.Result) !repository.RepositoryResult(Model)
-{
-	//TODO make a generic mapper and do it in repository.zig?
-	// Create an arena for mapper data.
-	var mapperArena = std.heap.ArenaAllocator.init(allocator);
-	// Get result mapper.
-	const mapper = try makeMapper(TableShape, queryResult, mapperArena.allocator(), null);
+pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
+	const InstanceInterface = _result.QueryResultReader(TableShape, inlineRelations).Instance;
 
-	// Initialize models list.
-	var models = std.ArrayList(*Model).init(allocator);
-	defer models.deinit();
+	return struct {
+		const Self = @This();
 
-	// Get all raw models from the result mapper.
-	while (try mapper.next()) |rawModel| {
-		// Parse each raw model from the mapper.
-		const model = try allocator.create(Model);
-		model.* = try repositoryConfig.fromSql(rawModel);
-		try models.append(model);
-	}
+		pub const Instance = struct {
+			/// Main object mapper.
+			mainMapper: pg.Mapper(TableShape) = undefined,
 
-	// Return a result with the models.
-	return repository.RepositoryResult(Model).init(allocator,
-		zollections.Collection(Model).init(allocator, try models.toOwnedSlice()),
-		mapperArena,
-	);
+			fn next(opaqueSelf: *anyopaque) !?TableShape { //TODO inline relations.
+				const self: *Instance = @ptrCast(@alignCast(opaqueSelf));
+				return try self.mainMapper.next();
+			}
+
+			pub fn instance(self: *Instance, allocator: std.mem.Allocator) InstanceInterface {
+				return .{
+					.__interface = .{
+						.instance = self,
+						.next = next,
+					},
+
+					.allocator = allocator,
+				};
+			}
+		};
+
+		instance: Instance = Instance{},
+
+		/// The PostgreSQL query result.
+		result: *pg.Result,
+
+		fn initInstance(opaqueSelf: *anyopaque, allocator: std.mem.Allocator) !InstanceInterface {
+			const self: *Self = @ptrCast(@alignCast(opaqueSelf));
+			self.instance.mainMapper = try makeMapper(TableShape, self.result, allocator, null);
+			return self.instance.instance(allocator);
+		}
+
+		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, inlineRelations) {
+			return .{
+				._interface = .{
+					.instance = self,
+					.init = initInstance,
+				},
+			};
+		}
+
+		/// Initialize a PostgreSQL query result reader from the given query result.
+		pub fn init(result: *pg.Result) Self {
+			return .{
+				.result = result,
+			};
+		}
+	};
 }

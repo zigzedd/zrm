@@ -9,6 +9,7 @@ const _conditions = @import("conditions.zig");
 const relations = @import("relations.zig");
 const repository = @import("repository.zig");
 const _comptime = @import("comptime.zig");
+const _result = @import("result.zig");
 
 /// Repository query configuration structure.
 pub const RepositoryQueryConfiguration = struct {
@@ -19,6 +20,8 @@ pub const RepositoryQueryConfiguration = struct {
 
 /// Compiled relations structure.
 const CompiledRelations = struct {
+	inlineRelations: []relations.ModelRelation,
+	otherRelations: []relations.ModelRelation,
 	inlineSelect: []const u8,
 	inlineJoins: []const u8,
 };
@@ -58,11 +61,15 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			}
 
 			break :compile CompiledRelations{
+				.inlineRelations = inlineRelations,
+				.otherRelations = &[0]relations.ModelRelation{},
 				.inlineSelect = if (inlineSelect.len > 0) ", " ++ _comptime.join(", ", inlineSelect) else "",
 				.inlineJoins = if (inlineJoins.len > 0) " " ++ _comptime.join(" ", inlineJoins) else "",
 			};
 		} else {
 			break :compile CompiledRelations{
+				.inlineRelations = &[0]relations.ModelRelation{},
+				.otherRelations = &[0]relations.ModelRelation{},
 				.inlineSelect = "",
 				.inlineJoins = "",
 			};
@@ -79,6 +86,9 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 	return struct {
 		const Self = @This();
+
+		/// Result mapper type.
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, repositoryConfig, compiledRelations.inlineRelations, compiledRelations.otherRelations);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -286,7 +296,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			defer queryResult.deinit();
 
 			// Map query results.
-			return postgresql.mapResults(Model, TableShape, repositoryConfig, allocator, queryResult);
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, compiledRelations.inlineRelations).init(queryResult);
+			return try ResultMapper.map(allocator, postgresqlReader.reader());
 		}
 
 		/// Initialize a new repository query.

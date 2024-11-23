@@ -7,6 +7,7 @@ const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
 const conditions = @import("conditions.zig");
 const repository = @import("repository.zig");
+const _result = @import("result.zig");
 
 /// Repository update query configuration structure.
 pub fn RepositoryUpdateConfiguration(comptime UpdateShape: type) type {
@@ -56,6 +57,9 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 		const Self = @This();
 
 		const Configuration = RepositoryUpdateConfiguration(UpdateShape);
+
+		/// Result mapper type.
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, repositoryConfig, null, null);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -301,7 +305,8 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 			defer queryResult.deinit();
 
 			// Map query results.
-			return postgresql.mapResults(Model, TableShape, repositoryConfig, allocator, queryResult);
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, null).init(queryResult);
+			return try ResultMapper.map(allocator, postgresqlReader.reader());
 		}
 
 		/// Initialize a new repository update query.

@@ -6,6 +6,7 @@ const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
+const _result = @import("result.zig");
 
 /// Type of an insertable column. Insert shape should be composed of only these.
 fn InsertableColumn(comptime ValueType: type) type {
@@ -117,6 +118,9 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		const Self = @This();
 
 		const Configuration = RepositoryInsertConfiguration(InsertShape);
+
+		/// Result mapper type.
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, repositoryConfig, null, null);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -332,7 +336,8 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 			defer queryResult.deinit();
 
 			// Map query results.
-			return postgresql.mapResults(Model, TableShape, repositoryConfig, allocator, queryResult);
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, null).init(queryResult);
+			return try ResultMapper.map(allocator, postgresqlReader.reader());
 		}
 
 		/// Initialize a new repository insert query.

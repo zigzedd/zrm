@@ -43,8 +43,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 			for (_with) |relation| {
 				// For each relation, determine if it's inline or not.
-				var tt = relation.relation{};
-				const relationInstance = tt.relation();
+				var relationImpl = relation.relation{};
+				const relationInstance = relationImpl.relation();
 				if (relationInstance.inlineMapping()) {
 					// Add the current relation to inline relations.
 					inlineRelations = @ptrCast(@constCast(_comptime.append(inlineRelations, relation)));

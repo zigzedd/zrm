@@ -67,6 +67,10 @@ pub fn typedMany(
 	return struct {
 		const Self = @This();
 
+		fn getRepositoryConfiguration(_: *anyopaque) repository.RepositoryConfiguration(ToModel, ToTable) {
+			return toRepositoryConfig;
+		}
+
 		fn inlineMapping(_: *anyopaque) bool {
 			return false;
 		}
@@ -109,11 +113,12 @@ pub fn typedMany(
 			}
 		}
 
-		pub fn relation(self: *Self) Relation {
+		pub fn relation(self: *Self) Relation(ToModel, ToTable) {
 			return .{
 				._interface = .{
 					.instance = self,
 
+					.getRepositoryConfiguration = getRepositoryConfiguration,
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
@@ -199,6 +204,10 @@ fn typedOne(
 	return struct {
 		const Self = @This();
 
+		fn getRepositoryConfiguration(_: *anyopaque) repository.RepositoryConfiguration(ToModel, ToTable) {
+			return toRepositoryConfig;
+		}
+
 		fn inlineMapping(_: *anyopaque) bool {
 			return true;
 		}
@@ -267,11 +276,12 @@ fn typedOne(
 			}
 		}
 
-		pub fn relation(self: *Self) Relation {
+		pub fn relation(self: *Self) Relation(ToModel, ToTable) {
 			return .{
 				._interface = .{
 					.instance = self,
 
+					.getRepositoryConfiguration = getRepositoryConfiguration,
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
@@ -282,42 +292,52 @@ fn typedOne(
 	};
 }
 
-
 /// Generic model relation interface.
-pub const Relation = struct {
-	const Self = @This();
+pub fn Relation(comptime ToModel: type, comptime ToTable: type) type {
+	return struct {
+		const Self = @This();
 
-	_interface: struct {
-		instance: *anyopaque,
+		pub const Model = ToModel;
+		pub const TableShape = ToTable;
 
-		inlineMapping: *const fn (self: *anyopaque) bool,
-		genJoin: *const fn (self: *anyopaque, comptime alias: []const u8) []const u8,
-		genSelect: *const fn (self: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8,
-		buildQuery: *const fn (self: *anyopaque, models: []const anyopaque, query: *anyopaque) anyerror!void,
-	},
+		_interface: struct {
+			instance: *anyopaque,
 
-	/// Relation mapping is done inline: this means that it's done at the same time the model is mapped,
-	/// and that the associated data will be retrieved in the main query.
-	pub fn inlineMapping(self: Self) bool {
-		return self._interface.inlineMapping(self._interface.instance);
-	}
+			getRepositoryConfiguration: *const fn (self: *anyopaque) repository.RepositoryConfiguration(ToModel, ToTable),
+			inlineMapping: *const fn (self: *anyopaque) bool,
+			genJoin: *const fn (self: *anyopaque, comptime alias: []const u8) []const u8,
+			genSelect: *const fn (self: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8,
+			buildQuery: *const fn (self: *anyopaque, models: []const anyopaque, query: *anyopaque) anyerror!void,
+		},
 
-	/// In case of inline mapping, generate a JOIN clause to retrieve the associated data.
-	pub fn genJoin(self: Self, comptime alias: []const u8) []const u8 {
-		return self._interface.genJoin(self._interface.instance, alias);
-	}
+		/// Read the related model repository configuration.
+		pub fn getRepositoryConfiguration(self: Self) repository.RepositoryConfiguration(ToModel, ToTable) {
+			return self._interface.getRepositoryConfiguration(self._interface.instance);
+		}
 
-	/// Generate a SELECT clause to retrieve the associated data, with the given table and prefix.
-	pub fn genSelect(self: Self, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
-		return self._interface.genSelect(self._interface.instance, table, prefix);
-	}
+		/// Relation mapping is done inline: this means that it's done at the same time the model is mapped,
+		/// and that the associated data will be retrieved in the main query.
+		pub fn inlineMapping(self: Self) bool {
+			return self._interface.inlineMapping(self._interface.instance);
+		}
 
-	/// Build the query to retrieve relation data.
-	/// Is always used when inline mapping is not possible, but also when loading relations lazily.
-	pub fn buildQuery(self: Self, models: []const anyopaque, query: *anyopaque) !void {
-		return self._interface.buildQuery(self._interface.instance, models, query);
-	}
-};
+		/// In case of inline mapping, generate a JOIN clause to retrieve the associated data.
+		pub fn genJoin(self: Self, comptime alias: []const u8) []const u8 {
+			return self._interface.genJoin(self._interface.instance, alias);
+		}
+
+		/// Generate a SELECT clause to retrieve the associated data, with the given table and prefix.
+		pub fn genSelect(self: Self, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+			return self._interface.genSelect(self._interface.instance, table, prefix);
+		}
+
+		/// Build the query to retrieve relation data.
+		/// Is always used when inline mapping is not possible, but also when loading relations lazily.
+		pub fn buildQuery(self: Self, models: []const anyopaque, query: *anyopaque) !void {
+			return self._interface.buildQuery(self._interface.instance, models, query);
+		}
+	};
+}
 
 
 /// A model relation object.

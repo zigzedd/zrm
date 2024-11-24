@@ -3,9 +3,73 @@ const zollections = @import("zollections");
 const _repository = @import("repository.zig");
 const _relations = @import("relations.zig");
 
+/// Type of a retrieved table data, with its retrieved relations.
+pub fn TableWithRelations(comptime TableShape: type, comptime optionalRelations: ?[]const _relations.ModelRelation) type {
+	if (optionalRelations) |relations| {
+		const tableType = @typeInfo(TableShape);
+
+		// Build fields list: copy the existing table type fields and add those for relations.
+		var fields: [tableType.Struct.fields.len + relations.len]std.builtin.Type.StructField = undefined;
+		// Copy base table fields.
+		@memcpy(fields[0..tableType.Struct.fields.len], tableType.Struct.fields);
+
+		// For each relation, create a new struct field in the table shape.
+		for (relations, fields[tableType.Struct.fields.len..]) |relation, *field| {
+			// Get relation field type (optional TableShape of the related value).
+			comptime var relationImpl = relation.relation{};
+			const relationInstanceType = @TypeOf(relationImpl.relation());
+			const relationFieldType = @Type(std.builtin.Type{
+				.Optional = .{
+					.child = relationInstanceType.TableShape
+				},
+			});
+
+			// Create the new field from relation data.
+			field.* = std.builtin.Type.StructField{
+				.name = relation.field ++ [0:0]u8{},
+				.type = relationFieldType,
+				.default_value = null,
+				.is_comptime = false,
+				.alignment = @alignOf(relationFieldType),
+			};
+		}
+
+		// Build the new type.
+		return @Type(std.builtin.Type{
+			.Struct = .{
+				.layout = tableType.Struct.layout,
+				.fields = &fields,
+				.decls = tableType.Struct.decls,
+				.is_tuple = tableType.Struct.is_tuple,
+				.backing_integer = tableType.Struct.backing_integer,
+			},
+		});
+	} else {
+		return TableShape;
+	}
+}
+
+/// Convert a value of the fully retrieved type to the TableShape type.
+pub fn toTableShape(comptime TableShape: type, comptime optionalRelations: ?[]const _relations.ModelRelation, value: TableWithRelations(TableShape, optionalRelations)) TableShape {
+	if (optionalRelations) |_| {
+		// Make a structure of TableShape type.
+		var tableValue: TableShape = undefined;
+
+		// Copy all fields of the table shape in the new structure.
+		inline for (std.meta.fields(TableShape)) |field| {
+			@field(tableValue, field.name) = @field(value, field.name);
+		}
+
+		// Return the simplified structure.
+		return tableValue;
+	} else {
+		// No relations, it should already be of type TableShape.
+		return value;
+	}
+}
+
 /// Generic interface of a query result reader.
 pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
-	_ = inlineRelations;
 	return struct {
 		const Self = @This();
 
@@ -13,12 +77,12 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		pub const Instance = struct {
 			__interface: struct {
 				instance: *anyopaque,
-				next: *const fn (self: *anyopaque) anyerror!?TableShape, //TODO inline relations.
+				next: *const fn (self: *anyopaque) anyerror!?TableWithRelations(TableShape, inlineRelations),
 			},
 
 			allocator: std.mem.Allocator,
 
-			pub fn next(self: Instance) !?TableShape {
+			pub fn next(self: Instance) !?TableWithRelations(TableShape, inlineRelations) {
 				return self.__interface.next(self.__interface.instance);
 			}
 		};
@@ -55,8 +119,23 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime re
 			while (try reader.next()) |rawModel| {
 				// Parse each raw model from the reader.
 				const model = try allocator.create(Model);
-				model.* = try repositoryConfig.fromSql(rawModel);
-				//TODO inline relations.
+				model.* = try repositoryConfig.fromSql(toTableShape(TableShape, inlineRelations, rawModel));
+
+				// Map inline relations.
+				if (inlineRelations) |_inlineRelations| {
+					// If there are loaded inline relations, map them to the result.
+					inline for (_inlineRelations) |relation| {
+						comptime var relationImpl = relation.relation{};
+						const relationInstance = relationImpl.relation();
+						// Set the read inline relation value.
+						@field(model.*, relation.field) = (
+							if (@field(rawModel, relation.field)) |relationVal|
+								try relationInstance.getRepositoryConfiguration().fromSql(relationVal)
+							else null
+						);
+					}
+				}
+
 				try models.append(model);
 			}
 

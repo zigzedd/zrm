@@ -59,8 +59,89 @@ pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
 	}
 }
 
+fn isSlice(comptime T: type) ?type {
+	switch(@typeInfo(T)) {
+		.Pointer => |ptr| {
+			if (ptr.size != .Slice) {
+				@compileError("cannot get value of type " ++ @typeName(T));
+			}
+			return if (ptr.child == u8) null else ptr.child;
+		},
+		.Optional => |opt| return isSlice(opt.child),
+		else => return null,
+	}
+}
+
+fn mapValue(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
+	switch (@typeInfo(T)) {
+		.Optional => |opt| {
+			if (value) |v| {
+				return try mapValue(opt.child, v, allocator);
+			}
+			return null;
+		},
+		else => {},
+	}
+
+	if (T == []u8 or T == []const u8) {
+		return try allocator.dupe(u8, value);
+	}
+
+	if (std.meta.hasFn(T, "pgzMoveOwner")) {
+		return value.pgzMoveOwner(allocator);
+	}
+
+	return value;
+}
+
+fn rowMapColumn(self: *const pg.Row, field: *const std.builtin.Type.StructField, optional_column_index: ?usize, allocator: ?std.mem.Allocator) !field.type {
+	const T = field.type;
+	const column_index = optional_column_index orelse {
+		if (field.default_value) |dflt| {
+			return @as(*align(1) const field.type, @ptrCast(dflt)).*;
+		}
+		return error.FieldColumnMismatch;
+	};
+
+	if (comptime isSlice(T)) |S| {
+		const slice = blk: {
+			if (@typeInfo(T) == .Optional) {
+				break :blk self.get(?pg.Iterator(S), column_index) orelse return null;
+			} else {
+				break :blk self.get(pg.Iterator(S), column_index);
+			}
+		};
+		return try slice.alloc(allocator orelse return error.AllocatorRequiredForSliceMapping);
+	}
+
+	const value = self.get(field.type, column_index);
+	const a = allocator orelse return value;
+	return mapValue(T, value, a);
+}
+
+pub fn PgMapper(comptime T: type) type {
+	return struct {
+		result: *pg.Result,
+		allocator: ?std.mem.Allocator,
+		column_indexes: [std.meta.fields(T).len]?usize,
+
+		const Self = @This();
+
+		pub fn next(self: *const Self, row: *pg.Row) !?T {
+			var value: T = undefined;
+
+			const allocator = self.allocator;
+			inline for (std.meta.fields(T), self.column_indexes) |field, optional_column_index| {
+				//TODO I must reimplement row.mapColumn because it's not public :-(
+				@field(value, field.name) = try rowMapColumn(row, &field, optional_column_index, allocator);
+			}
+			return value;
+		}
+	};
+}
+
 /// Make a PostgreSQL result mapper with the given prefix, if there is one.
-pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Allocator, optionalPrefix: ?[]const u8) !pg.Mapper(T) {
+pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Allocator, optionalPrefix: ?[]const u8) !PgMapper(T) {
 	var column_indexes: [std.meta.fields(T).len]?usize = undefined;
 
 	inline for (std.meta.fields(T), 0..) |field, i| {
@@ -80,21 +161,91 @@ pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Alloc
 	};
 }
 
+/// PostgreSQL implementation of the query result reader.
 pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
 	const InstanceInterface = _result.QueryResultReader(TableShape, inlineRelations).Instance;
+
+	// Build relations mappers container type.
+	const RelationsMappersType = comptime typeBuilder: {
+		if (inlineRelations) |_inlineRelations| {
+			// Make a field for each relation.
+			var fields: [_inlineRelations.len]std.builtin.Type.StructField = undefined;
+
+			for (_inlineRelations, &fields) |relation, *field| {
+				// Get relation field type (TableShape of the related value).
+				var relationImpl = relation.relation{};
+				const relationInstanceType = @TypeOf(relationImpl.relation());
+				const relationFieldType = PgMapper(relationInstanceType.TableShape);
+
+				field.* = .{
+					.name = relation.field ++ [0:0]u8{},
+					.type = relationFieldType,
+					.default_value = null,
+					.is_comptime = false,
+					.alignment = @alignOf(relationFieldType),
+				};
+			}
+
+			// Build type with one field for each relation.
+			break :typeBuilder @Type(std.builtin.Type{
+				.Struct = .{
+					.layout = std.builtin.Type.ContainerLayout.auto,
+					.fields = &fields,
+					.decls = &[0]std.builtin.Type.Declaration{},
+					.is_tuple = false,
+				},
+			});
+		}
+
+		// Build default empty type.
+		break :typeBuilder @Type(std.builtin.Type{
+			.Struct = .{
+				.layout = std.builtin.Type.ContainerLayout.auto,
+				.fields = &[0]std.builtin.Type.StructField{},
+				.decls = &[0]std.builtin.Type.Declaration{},
+				.is_tuple = false,
+			},
+		});
+	};
 
 	return struct {
 		const Self = @This();
 
+		/// PostgreSQL implementation of the query result reader instance.
 		pub const Instance = struct {
 			/// Main object mapper.
-			mainMapper: pg.Mapper(TableShape) = undefined,
+			mainMapper: PgMapper(TableShape) = undefined,
+			relationsMappers: RelationsMappersType = undefined,
 
-			fn next(opaqueSelf: *anyopaque) !?TableShape { //TODO inline relations.
+			fn next(opaqueSelf: *anyopaque) !?_result.TableWithRelations(TableShape, inlineRelations) {
 				const self: *Instance = @ptrCast(@alignCast(opaqueSelf));
-				return try self.mainMapper.next();
+
+				// Try to get the next row.
+				var row: pg.Row = try self.mainMapper.result.next() orelse return null;
+
+				// Get main table result.
+				const mainTable = try self.mainMapper.next(&row) orelse return null;
+
+				// Initialize the result.
+				var result: _result.TableWithRelations(TableShape, inlineRelations) = undefined;
+
+				// Copy each basic table field.
+				inline for (std.meta.fields(TableShape)) |field| {
+					@field(result, field.name) = @field(mainTable, field.name);
+				}
+
+				if (inlineRelations) |_inlineRelations| {
+					// For each relation, retrieve its value and put it in the result.
+					inline for (_inlineRelations) |relation| {
+						//TODO detect null relation.
+						@field(result, relation.field) = try @field(self.relationsMappers, relation.field).next(&row);
+					}
+				}
+
+				return result; // Return built result.
 			}
 
+			/// Get the generic reader instance instance.
 			pub fn instance(self: *Instance, allocator: std.mem.Allocator) InstanceInterface {
 				return .{
 					.__interface = .{
@@ -115,9 +266,22 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		fn initInstance(opaqueSelf: *anyopaque, allocator: std.mem.Allocator) !InstanceInterface {
 			const self: *Self = @ptrCast(@alignCast(opaqueSelf));
 			self.instance.mainMapper = try makeMapper(TableShape, self.result, allocator, null);
+
+			if (inlineRelations) |_inlineRelations| {
+				// Initialize mapper for each relation.
+				inline for (_inlineRelations) |relation| {
+					// Get relation field type (TableShape of the related value).
+					comptime var relationImpl = relation.relation{};
+					const relationInstanceType = @TypeOf(relationImpl.relation());
+					@field(self.instance.relationsMappers, relation.field) =
+						try makeMapper(relationInstanceType.TableShape, self.result, allocator, "relations." ++ relation.field ++ ".");
+				}
+			}
+
 			return self.instance.instance(allocator);
 		}
 
+		/// Get the generic reader instance.
 		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, inlineRelations) {
 			return .{
 				._interface = .{

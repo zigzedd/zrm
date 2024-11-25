@@ -58,6 +58,10 @@ pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
 	}
 }
 
+const PgError = error {
+	NullValue,
+};
+
 fn isSlice(comptime T: type) ?type {
 	switch(@typeInfo(T)) {
 		.Pointer => |ptr| {
@@ -93,6 +97,54 @@ fn mapValue(comptime T: type, value: T, allocator: std.mem.Allocator) !T {
 	return value;
 }
 
+fn getScalar(T: type, data: []const u8, oid: i32) T {
+	switch (T) {
+		u8 => return pg.types.Char.decode(data, oid),
+		i16 => return pg.types.Int16.decode(data, oid),
+		i32 => return pg.types.Int32.decode(data, oid),
+		i64 => return pg.types.Int64.decode(data, oid),
+		f32 => return pg.types.Float32.decode(data, oid),
+		f64 => return pg.types.Float64.decode(data, oid),
+		bool => return pg.types.Bool.decode(data, oid),
+		[]const u8 => return pg.types.Bytea.decode(data, oid),
+		[]u8 => return @constCast(pg.types.Bytea.decode(data, oid)),
+		pg.types.Numeric => return pg.types.Numeric.decode(data, oid),
+		pg.types.Cidr => return pg.types.Cidr.decode(data, oid),
+		else => switch (@typeInfo(T)) {
+			.Enum => {
+				const str = pg.types.Bytea.decode(data, oid);
+				return std.meta.stringToEnum(T, str).?;
+			},
+			else => @compileError("cannot get value of type " ++ @typeName(T)),
+		},
+	}
+}
+
+pub fn rowGet(self: *const pg.Row, comptime T: type, col: usize) PgError!T {
+	const value = self.values[col];
+	const TT = switch (@typeInfo(T)) {
+		.Optional => |opt| {
+			if (value.is_null) {
+				return null;
+			} else {
+				return self.get(opt.child, col);
+			}
+		},
+		.Struct => blk: {
+			if (@hasDecl(T, "fromPgzRow") == true) {
+				return T.fromPgzRow(value, self.oids[col]);
+			}
+			break :blk T;
+		},
+		else => blk: {
+			if (value.is_null) return PgError.NullValue;
+			break :blk T;
+		},
+	};
+
+	return getScalar(TT, value.data, self.oids[col]);
+}
+
 fn rowMapColumn(self: *const pg.Row, field: *const std.builtin.Type.StructField, optional_column_index: ?usize, allocator: ?std.mem.Allocator) !field.type {
 	const T = field.type;
 	const column_index = optional_column_index orelse {
@@ -105,15 +157,15 @@ fn rowMapColumn(self: *const pg.Row, field: *const std.builtin.Type.StructField,
 	if (comptime isSlice(T)) |S| {
 		const slice = blk: {
 			if (@typeInfo(T) == .Optional) {
-				break :blk self.get(?pg.Iterator(S), column_index) orelse return null;
+				break :blk try rowGet(self, ?pg.Iterator(S), column_index) orelse return null;
 			} else {
-				break :blk self.get(pg.Iterator(S), column_index);
+				break :blk try rowGet(self, pg.Iterator(S), column_index);
 			}
 		};
 		return try slice.alloc(allocator orelse return error.AllocatorRequiredForSliceMapping);
 	}
 
-	const value = self.get(field.type, column_index);
+	const value = try rowGet(self, field.type, column_index);
 	const a = allocator orelse return value;
 	return mapValue(T, value, a);
 }
@@ -235,8 +287,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 				if (inlineRelations) |_inlineRelations| {
 					// For each relation, retrieve its value and put it in the result.
 					inline for (_inlineRelations) |relation| {
-						//TODO detect null relation.
-						@field(result, relation.field) = try @field(self.relationsMappers, relation.field).next(&row);
+						@field(result, relation.field) = @field(self.relationsMappers, relation.field).next(&row) catch null;
 					}
 				}
 

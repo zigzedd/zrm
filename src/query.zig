@@ -20,20 +20,20 @@ pub const RepositoryQueryConfiguration = struct {
 
 /// Compiled relations structure.
 const CompiledRelations = struct {
-	inlineRelations: []relations.ModelRelation,
-	otherRelations: []relations.ModelRelation,
+	inlineRelations: []relations.Relation,
+	otherRelations: []relations.Relation,
 	inlineSelect: []const u8,
 	inlineJoins: []const u8,
 };
 
 /// Repository models query manager.
 /// Manage query string build and its execution.
-pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.ModelRelation, comptime MetadataShape: ?type) type {
+pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.Relation, comptime MetadataShape: ?type) type {
 	const compiledRelations = comptime compile: {
 		// Inline relations list.
-		var inlineRelations: []relations.ModelRelation = &[0]relations.ModelRelation{};
+		var inlineRelations: []relations.Relation = &[0]relations.Relation{};
 		// Other relations list.
-		var otherRelations: []relations.ModelRelation = &[0]relations.ModelRelation{};
+		var otherRelations: []relations.Relation = &[0]relations.Relation{};
 
 		if (with) |_with| {
 			// If there are relations to eager load, prepare their query.
@@ -45,20 +45,14 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 			for (_with) |relation| {
 				// For each relation, determine if it's inline or not.
-				var relationImpl = relation.relation{};
-				const relationInstance = relationImpl.relation();
-				if (relationInstance.inlineMapping()) {
+				if (relation.inlineMapping) {
 					// Add the current relation to inline relations.
 					inlineRelations = @ptrCast(@constCast(_comptime.append(inlineRelations, relation)));
 
-					// Build table alias and fields prefix for the relation.
-					const tableAlias = "relations." ++ relation.field;
-					const fieldsPrefix = tableAlias ++ ".";
-
 					// Generate selected columns for the relation.
-					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relationInstance.genSelect(tableAlias, fieldsPrefix))));
+					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relation.select)));
 					// Generate joined table for the relation.
-					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relationInstance.genJoin(tableAlias))));
+					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relation.join)));
 				} else {
 					// Add the current relation to other relations.
 					otherRelations = @ptrCast(@constCast(_comptime.append(otherRelations, relation)));
@@ -73,8 +67,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			};
 		} else {
 			break :compile CompiledRelations{
-				.inlineRelations = &[0]relations.ModelRelation{},
-				.otherRelations = &[0]relations.ModelRelation{},
+				.inlineRelations = &[0]relations.Relation{},
+				.otherRelations = &[0]relations.Relation{},
 				.inlineSelect = "",
 				.inlineJoins = "",
 			};

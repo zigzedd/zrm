@@ -162,7 +162,7 @@ pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Alloc
 }
 
 /// PostgreSQL implementation of the query result reader.
-pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
+pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.Relation) type {
 	const InstanceInterface = _result.QueryResultReader(TableShape, MetadataShape, inlineRelations).Instance;
 
 	// Build relations mappers container type.
@@ -173,9 +173,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 
 			for (_inlineRelations, &fields) |relation, *field| {
 				// Get relation field type (TableShape of the related value).
-				var relationImpl = relation.relation{};
-				const relationInstanceType = @TypeOf(relationImpl.relation());
-				const relationFieldType = PgMapper(relationInstanceType.TableShape);
+				const relationFieldType = PgMapper(relation.TableShape);
 
 				field.* = .{
 					.name = relation.field ++ [0:0]u8{},
@@ -278,11 +276,8 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 			if (inlineRelations) |_inlineRelations| {
 				// Initialize mapper for each relation.
 				inline for (_inlineRelations) |relation| {
-					// Get relation field type (TableShape of the related value).
-					comptime var relationImpl = relation.relation{};
-					const relationInstanceType = @TypeOf(relationImpl.relation());
 					@field(self.instance.relationsMappers, relation.field) =
-						try makeMapper(relationInstanceType.TableShape, self.result, allocator, "relations." ++ relation.field ++ ".");
+						try makeMapper(relation.TableShape, self.result, allocator, "relations." ++ relation.field ++ ".");
 				}
 			}
 

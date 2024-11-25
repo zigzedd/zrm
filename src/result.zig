@@ -17,7 +17,7 @@ pub fn ModelWithMetadata(comptime Model: type, comptime MetadataShape: ?type) ty
 }
 
 /// Type of a retrieved table data, with its retrieved relations.
-pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.ModelRelation) type {
+pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.Relation) type {
 	if (optionalRelations) |relations| {
 		const tableType = @typeInfo(TableShape);
 
@@ -29,11 +29,9 @@ pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?ty
 		// For each relation, create a new struct field in the table shape.
 		for (relations, fields[tableType.Struct.fields.len..(tableType.Struct.fields.len+relations.len)]) |relation, *field| {
 			// Get relation field type (optional TableShape of the related value).
-			comptime var relationImpl = relation.relation{};
-			const relationInstanceType = @TypeOf(relationImpl.relation());
 			const relationFieldType = @Type(std.builtin.Type{
 				.Optional = .{
-					.child = relationInstanceType.TableShape
+					.child = relation.TableShape
 				},
 			});
 
@@ -74,7 +72,7 @@ pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?ty
 }
 
 /// Convert a value of the fully retrieved type to the TableShape type.
-pub fn toTableShape(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.ModelRelation, value: TableWithRelations(TableShape, MetadataShape, optionalRelations)) TableShape {
+pub fn toTableShape(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.Relation, value: TableWithRelations(TableShape, MetadataShape, optionalRelations)) TableShape {
 	if (optionalRelations) |_| {
 		// Make a structure of TableShape type.
 		var tableValue: TableShape = undefined;
@@ -93,7 +91,7 @@ pub fn toTableShape(comptime TableShape: type, comptime MetadataShape: ?type, co
 }
 
 /// Generic interface of a query result reader.
-pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
+pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.Relation) type {
 	return struct {
 		const Self = @This();
 
@@ -124,7 +122,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 }
 
 /// Map query result to repository model structures, and load the given relations.
-pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime MetadataShape: ?type, comptime repositoryConfig: _repository.RepositoryConfiguration(Model, TableShape), comptime inlineRelations: ?[]const _relations.ModelRelation, comptime relations: ?[]const _relations.ModelRelation) type {
+pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime MetadataShape: ?type, comptime repositoryConfig: _repository.RepositoryConfiguration(Model, TableShape), comptime inlineRelations: ?[]const _relations.Relation, comptime relations: ?[]const _relations.Relation) type {
 	return struct {
 		/// Map the query result to a repository result, with all the required relations.
 		pub fn map(comptime withMetadata: bool, allocator: std.mem.Allocator, connector: _database.Connector, queryReader: QueryResultReader(TableShape, MetadataShape, inlineRelations)) !_repository.RepositoryResult(if (withMetadata) ModelWithMetadata(Model, MetadataShape) else Model) {
@@ -151,12 +149,10 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 				if (inlineRelations) |_inlineRelations| {
 					// If there are loaded inline relations, map them to the result.
 					inline for (_inlineRelations) |relation| {
-						comptime var relationImpl = relation.relation{};
-						const relationInstance = relationImpl.relation();
 						// Set the read inline relation value.
 						@field(model.*, relation.field) = (
 							if (@field(rawModel, relation.field)) |relationVal|
-								try relationInstance.getRepositoryConfiguration().fromSql(relationVal)
+								try relation.repositoryConfiguration().fromSql(relationVal)
 							else null
 						);
 					}
@@ -172,13 +168,9 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 
 			if (relations) |relationsToLoad| {
 				inline for (relationsToLoad) |relation| {
-					const comptimeRelation = @constCast(&relation.relation{}).relation();
-					var relationImpl = relation.relation{};
-					const relationInstance = relationImpl.runtimeRelation();
-
 					// Build query for the relation to get.
-					const query: *comptimeRelation.QueryType = @ptrCast(@alignCast(
-						try relationInstance.buildQuery("relations." ++ relation.field ++ ".", @ptrCast(models.items), allocator, connector)
+					const query: *relation.QueryType = @ptrCast(@alignCast(
+						try relation.buildQuery(@ptrCast(models.items), allocator, connector)
 					));
 					defer {
 						query.deinit();

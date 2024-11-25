@@ -78,17 +78,45 @@ pub fn ModelKeyType(comptime Model: type, comptime TableShape: type, comptime co
 pub fn RelationsDefinitionType(comptime rawDefinition: anytype) type {
 	const rawDefinitionType = @typeInfo(@TypeOf(rawDefinition));
 
-	// Build model relations fields.
-	var fields: [rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
-	inline for (rawDefinitionType.Struct.fields, &fields) |originalField, *field| {
-		field.* = .{
+	// Build relations fields and implementations fields.
+	var fields: [1 + rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
+	var implementationsFields: [rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
+
+	inline for (rawDefinitionType.Struct.fields, fields[1..], &implementationsFields) |originalField, *field, *implementationField| {
+		field.* = std.builtin.Type.StructField{
 			.name = originalField.name,
-			.type = _relations.ModelRelation,
+			.type = _relations.Relation,
 			.default_value = null,
 			.is_comptime = false,
-			.alignment = @alignOf(_relations.ModelRelation),
+			.alignment = @alignOf(type),
+		};
+
+		const ImplementationType = @field(rawDefinition, originalField.name).Implementation(originalField.name);
+		implementationField.* = std.builtin.Type.StructField{
+			.name = originalField.name,
+			.type = ImplementationType,
+			.default_value = &ImplementationType{},
+			.is_comptime = false,
+			.alignment = @alignOf(ImplementationType),
 		};
 	}
+
+	// Add implementations field.
+	const ImplementationsType = @Type(.{
+		.Struct = std.builtin.Type.Struct{
+			.layout = std.builtin.Type.ContainerLayout.auto,
+			.fields = &implementationsFields,
+			.decls = &[_]std.builtin.Type.Declaration{},
+			.is_tuple = false,
+		},
+	});
+	fields[0] = std.builtin.Type.StructField{
+		.name = "_implementations",
+		.type = ImplementationsType,
+		.default_value = null,
+		.is_comptime = false,
+		.alignment = @alignOf(ImplementationsType),
+	};
 
 	// Return built type.
 	return @Type(.{
@@ -134,17 +162,16 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 				// Initialize final relations definition.
 				var definition: RelationsDefinitionType(rawDefinition) = undefined;
 
+				definition._implementations = .{};
+
 				// Check that the definition structure only include known fields.
 				inline for (std.meta.fieldNames(rawDefinitionType)) |fieldName| {
 					if (!@hasField(Model, fieldName)) {
 						@compileError("No corresponding field for relation " ++ fieldName);
 					}
 
-					// Alter definition structure to add the field name.
-					@field(definition, fieldName) = .{
-						.relation = @field(rawDefinition, fieldName),
-						.field = fieldName,
-					};
+					// Alter definition structure to set the relation instance.
+					@field(definition, fieldName) = @field(definition._implementations, fieldName).relation();
 				}
 
 				// Return altered definition structure.
@@ -152,7 +179,7 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 			}
 		};
 
-		pub fn QueryWith(comptime with: []const _relations.ModelRelation) type {
+		pub fn QueryWith(comptime with: []const _relations.Relation) type {
 			return query.RepositoryQuery(Model, TableShape, config, with, null);
 		}
 

@@ -34,7 +34,7 @@ test "belongsTo" {
 	// Build a query of submodels.
 	var myQuery = repository.MySubmodelRepository.QueryWith(
 		// Retrieve parents of submodels from relation.
-		&[_]zrm.relations.ModelRelation{repository.MySubmodelRelations.parent}
+		&[_]zrm.relations.Relation{repository.MySubmodelRelations.parent}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	defer myQuery.deinit();
 
@@ -64,8 +64,8 @@ test "hasMany" {
 
 	// Build a query of submodels.
 	var myQuery = repository.MyModelRepository.QueryWith(
-	// Retrieve parents of submodels from relation.
-		&[_]zrm.relations.ModelRelation{repository.MyModelRelations.submodels}
+		// Retrieve parents of submodels from relation.
+		&[_]zrm.relations.Relation{repository.MyModelRelations.submodels}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	defer myQuery.deinit();
 

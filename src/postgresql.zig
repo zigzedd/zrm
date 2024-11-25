@@ -162,8 +162,8 @@ pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Alloc
 }
 
 /// PostgreSQL implementation of the query result reader.
-pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
-	const InstanceInterface = _result.QueryResultReader(TableShape, inlineRelations).Instance;
+pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
+	const InstanceInterface = _result.QueryResultReader(TableShape, MetadataShape, inlineRelations).Instance;
 
 	// Build relations mappers container type.
 	const RelationsMappersType = comptime typeBuilder: {
@@ -215,9 +215,10 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		pub const Instance = struct {
 			/// Main object mapper.
 			mainMapper: PgMapper(TableShape) = undefined,
+			metadataMapper: PgMapper(MetadataShape orelse struct {}) = undefined,
 			relationsMappers: RelationsMappersType = undefined,
 
-			fn next(opaqueSelf: *anyopaque) !?_result.TableWithRelations(TableShape, inlineRelations) {
+			fn next(opaqueSelf: *anyopaque) !?_result.TableWithRelations(TableShape, MetadataShape, inlineRelations) {
 				const self: *Instance = @ptrCast(@alignCast(opaqueSelf));
 
 				// Try to get the next row.
@@ -227,7 +228,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 				const mainTable = try self.mainMapper.next(&row) orelse return null;
 
 				// Initialize the result.
-				var result: _result.TableWithRelations(TableShape, inlineRelations) = undefined;
+				var result: _result.TableWithRelations(TableShape, MetadataShape, inlineRelations) = undefined;
 
 				// Copy each basic table field.
 				inline for (std.meta.fields(TableShape)) |field| {
@@ -240,6 +241,10 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 						//TODO detect null relation.
 						@field(result, relation.field) = try @field(self.relationsMappers, relation.field).next(&row);
 					}
+				}
+
+				if (MetadataShape) |_| {
+					result._zrm_metadata = (try self.metadataMapper.next(&row)).?;
 				}
 
 				return result; // Return built result.
@@ -266,6 +271,9 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		fn initInstance(opaqueSelf: *anyopaque, allocator: std.mem.Allocator) !InstanceInterface {
 			const self: *Self = @ptrCast(@alignCast(opaqueSelf));
 			self.instance.mainMapper = try makeMapper(TableShape, self.result, allocator, null);
+			if (MetadataShape) |MetadataType| {
+				self.instance.metadataMapper = try makeMapper(MetadataType, self.result, allocator, null);
+			}
 
 			if (inlineRelations) |_inlineRelations| {
 				// Initialize mapper for each relation.
@@ -282,7 +290,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		}
 
 		/// Get the generic reader instance.
-		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, inlineRelations) {
+		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, MetadataShape, inlineRelations) {
 			return .{
 				._interface = .{
 					.instance = self,

@@ -1,5 +1,6 @@
 const std = @import("std");
 const pg = @import("pg");
+const _database = @import("database.zig");
 const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
 const _query = @import("query.zig");
@@ -62,7 +63,9 @@ pub fn typedMany(
 	};
 
 	const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
-	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null);
+	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null, struct {
+		__zrm_relation_key: FromKeyType,
+	});
 
 	return struct {
 		const Self = @This();
@@ -79,15 +82,29 @@ pub fn typedMany(
 			unreachable; // No possible join in a many relation.
 		}
 
-		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+		fn _genSelect(comptime table: []const u8, comptime prefix: []const u8) []const u8 {
 			return _sql.SelectBuild(ToTable, table, prefix);
 		}
 
-		fn buildQuery(_: *anyopaque, opaqueModels: []const anyopaque, opaqueQuery: *anyopaque) !void {
-			var models: []const FromModel = undefined;
-			models.len = opaqueModels.len;
-			models.ptr = @ptrCast(@alignCast(opaqueModels.ptr));
-			const query: *QueryType = @ptrCast(@alignCast(opaqueQuery));
+		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+			return _genSelect(table, prefix);
+		}
+
+		fn getQueryType() type {
+			return QueryType;
+		}
+
+		fn buildQuery(_: *anyopaque, prefix: []const u8, opaqueModels: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
+			const models: []const *FromModel = @ptrCast(@alignCast(opaqueModels));
+
+			// Initialize the query to build.
+			const query: *QueryType = try allocator.create(QueryType);
+			errdefer allocator.destroy(query);
+			query.* = QueryType.init(allocator, connector, .{});
+			errdefer query.deinit();
+
+			// Build base SELECT.
+			const baseSelect = comptime _genSelect(toRepositoryConfig.table, "");
 
 			// Prepare given models IDs.
 			const modelsIds = try query.arena.allocator().alloc(FromKeyType, models.len);
@@ -97,20 +114,34 @@ pub fn typedMany(
 
 			switch (config) {
 				.direct => {
-					// Build WHERE condition.
-					try query.whereIn(FromKeyType, "\"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\"", modelsIds);
-				},
-				.through => |through| {
-					query.join(.{
-						.sql = "INNER JOIN \"" ++ through.table ++ "\" ON " ++
-							"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\""  ++ through.table ++ "\"." ++ through.joinModelKey,
+					// Add SELECT.
+					query.select(.{
+						.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relation_key\"",
 						.params = &[0]_sql.RawQueryParameter{},
 					});
 
 					// Build WHERE condition.
-					try query.whereIn(FromKeyType, "\"" ++ through.table ++ "\".\"" ++ through.joinForeignKey ++ "\"", modelsIds);
+					try query.whereIn(FromKeyType, "\"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\"", modelsIds);
+				},
+				.through => |through| {
+					// Add SELECT.
+					query.select(.{
+						.sql = try std.fmt.allocPrint(query.arena.allocator(), baseSelect ++ ", \"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"", .{prefix}),
+						.params = &[0]_sql.RawQueryParameter{},
+					});
+
+					query.join(.{
+						.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ through.table ++ "\" ON AS \"{s}pivot" ++ "\" " ++
+							"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"{s}pivot" ++ "\"." ++ through.joinModelKey, .{prefix, prefix}),
+						.params = &[0]_sql.RawQueryParameter{},
+					});
+
+					// Build WHERE condition.
+					try query.whereIn(FromKeyType, try std.fmt.allocPrint(query.arena.allocator(), "\"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", .{prefix}), modelsIds);
 				},
 			}
+
+			return query; // Return built query.
 		}
 
 		pub fn relation(self: *Self) Relation(ToModel, ToTable) {
@@ -122,6 +153,15 @@ pub fn typedMany(
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
+					.getQueryType = getQueryType,
+				},
+			};
+		}
+
+		pub fn runtimeRelation(self: *Self) RuntimeRelation {
+			return .{
+				._interface = .{
+					.instance = self,
 					.buildQuery = buildQuery,
 				},
 			};
@@ -185,7 +225,9 @@ fn typedOne(
 	comptime config: OneConfiguration) type {
 
 	const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
-	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null);
+	const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null, struct {
+		__zrm_relation_key: FromKeyType,
+	});
 
 	// Get foreign key from relation config or repository config.
 	const foreignKey = switch (config) {
@@ -233,15 +275,29 @@ fn typedOne(
 			};
 		}
 
-		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+		fn _genSelect(comptime table: []const u8, comptime prefix: []const u8) []const u8 {
 			return _sql.SelectBuild(ToTable, table, prefix);
 		}
 
-		fn buildQuery(_: *anyopaque, opaqueModels: []const anyopaque, opaqueQuery: *anyopaque) !void {
-			var models: []const FromModel = undefined;
-			models.len = opaqueModels.len;
-			models.ptr = @ptrCast(@alignCast(opaqueModels.ptr));
-			const query: *QueryType = @ptrCast(@alignCast(opaqueQuery));
+		fn genSelect(_: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
+			return _genSelect(table, prefix);
+		}
+
+		fn getQueryType() type {
+			return QueryType;
+		}
+
+		fn buildQuery(_: *anyopaque, prefix: []const u8, opaqueModels: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
+			const models: []const *FromModel = @ptrCast(@alignCast(opaqueModels));
+
+			// Initialize the query to build.
+			const query: *QueryType = try allocator.create(QueryType);
+			errdefer allocator.destroy(query);
+			query.* = QueryType.init(allocator, connector, .{});
+			errdefer query.deinit();
+
+			// Build base SELECT.
+			const baseSelect = comptime _genSelect(toRepositoryConfig.table, "");
 
 			// Prepare given models IDs.
 			const modelsIds = try query.arena.allocator().alloc(FromKeyType, models.len);
@@ -251,8 +307,15 @@ fn typedOne(
 
 			switch (config) {
 				.direct => {
+					// Add SELECT.
+					query.select(.{
+						.sql = baseSelect ++ ", \"" ++ fromRepositoryConfig.table ++ "\".\"" ++ fromRepositoryConfig.key[0] ++ "\" AS \"__zrm_relation_key\"",
+						.params = &[0]_sql.RawQueryParameter{},
+					});
+
 					query.join((_sql.RawQuery{
-						.sql = "INNER JOIN \"" ++ fromRepositoryConfig.table ++ "\" ON \"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey,
+						.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ fromRepositoryConfig.table ++ "\" AS \"{s}related" ++ "\" ON " ++
+							"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"{s}related" ++ "\"." ++ foreignKey, .{prefix, prefix}),
 						.params = &[0]_sql.RawQueryParameter{},
 					}));
 
@@ -260,20 +323,35 @@ fn typedOne(
 					try query.whereIn(FromKeyType, "\"" ++ fromRepositoryConfig.table ++ "\".\"" ++ fromRepositoryConfig.key[0] ++ "\"", modelsIds);
 				},
 				.reverse => {
-					// Build WHERE condition.
-					try query.whereIn(FromKeyType, "\"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\"", modelsIds);
-				},
-				.through => |through| {
-					query.join(.{
-						.sql = "INNER JOIN \"" ++ through.table ++ "\" ON " ++
-							"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\""  ++ through.table ++ "\"." ++ through.joinModelKey,
+					// Add SELECT.
+					query.select(.{
+						.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relation_key\"",
 						.params = &[0]_sql.RawQueryParameter{},
 					});
 
 					// Build WHERE condition.
-					try query.whereIn(FromKeyType, "\"" ++ through.table ++ "\".\"" ++ through.joinForeignKey ++ "\"", modelsIds);
+					try query.whereIn(FromKeyType, "\"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\"", modelsIds);
+				},
+				.through => |through| {
+					// Add SELECT.
+					query.select(.{
+						.sql = try std.fmt.allocPrint(query.arena.allocator(), baseSelect ++ ", \"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"", .{prefix}),
+						.params = &[0]_sql.RawQueryParameter{},
+					});
+
+					query.join(.{
+						.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ through.table ++ "\" AS \"{s}pivot" ++ "\" ON " ++
+							"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"{s}pivot" ++ "\"." ++ through.joinModelKey, .{prefix, prefix}),
+						.params = &[0]_sql.RawQueryParameter{},
+					});
+
+					// Build WHERE condition.
+					try query.whereIn(FromKeyType, try std.fmt.allocPrint(query.arena.allocator(), "\"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", .{prefix}), modelsIds);
 				},
 			}
+
+			// Return built query.
+			return query;
 		}
 
 		pub fn relation(self: *Self) Relation(ToModel, ToTable) {
@@ -285,6 +363,15 @@ fn typedOne(
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
+					.getQueryType = getQueryType,
+				},
+			};
+		}
+
+		pub fn runtimeRelation(self: *Self) RuntimeRelation {
+			return .{
+				._interface = .{
+					.instance = self,
 					.buildQuery = buildQuery,
 				},
 			};
@@ -307,7 +394,7 @@ pub fn Relation(comptime ToModel: type, comptime ToTable: type) type {
 			inlineMapping: *const fn (self: *anyopaque) bool,
 			genJoin: *const fn (self: *anyopaque, comptime alias: []const u8) []const u8,
 			genSelect: *const fn (self: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8,
-			buildQuery: *const fn (self: *anyopaque, models: []const anyopaque, query: *anyopaque) anyerror!void,
+			getQueryType: *const fn () type,
 		},
 
 		/// Read the related model repository configuration.
@@ -331,13 +418,29 @@ pub fn Relation(comptime ToModel: type, comptime ToTable: type) type {
 			return self._interface.genSelect(self._interface.instance, table, prefix);
 		}
 
-		/// Build the query to retrieve relation data.
-		/// Is always used when inline mapping is not possible, but also when loading relations lazily.
-		pub fn buildQuery(self: Self, models: []const anyopaque, query: *anyopaque) !void {
-			return self._interface.buildQuery(self._interface.instance, models, query);
+		/// Get relation query type.
+		pub fn getQueryType(self: Self) type {
+			return self._interface.getQueryType();
 		}
 	};
 }
+
+/// Generic model runtime relation interface.
+pub const RuntimeRelation = struct {
+	const Self = @This();
+
+	_interface: struct {
+		instance: *anyopaque,
+
+		buildQuery: *const fn (self: *anyopaque, prefix: []const u8, models: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) anyerror!*anyopaque,
+	},
+
+	/// Build the query to retrieve relation data.
+	/// Is always used when inline mapping is not possible, but also when loading relations lazily.
+	pub fn buildQuery(self: Self, prefix: []const u8, models: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
+		return self._interface.buildQuery(self._interface.instance, prefix, models, allocator, connector);
+	}
+};
 
 
 /// A model relation object.

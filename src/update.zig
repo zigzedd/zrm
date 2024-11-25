@@ -59,7 +59,7 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 		const Configuration = RepositoryUpdateConfiguration(UpdateShape);
 
 		/// Result mapper type.
-		pub const ResultMapper = _result.ResultMapper(Model, TableShape, repositoryConfig, null, null);
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, null, repositoryConfig, null, null);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -305,8 +305,8 @@ pub fn RepositoryUpdate(comptime Model: type, comptime TableShape: type, comptim
 			defer queryResult.deinit();
 
 			// Map query results.
-			var postgresqlReader = postgresql.QueryResultReader(TableShape, null).init(queryResult);
-			return try ResultMapper.map(allocator, postgresqlReader.reader());
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, null, null).init(queryResult);
+			return try ResultMapper.map(false, allocator, self.connector, postgresqlReader.reader());
 		}
 
 		/// Initialize a new repository update query.

@@ -1,20 +1,33 @@
 const std = @import("std");
 const zollections = @import("zollections");
+const _database = @import("database.zig");
 const _repository = @import("repository.zig");
 const _relations = @import("relations.zig");
 
+/// Structure of a model with its metadata.
+pub fn ModelWithMetadata(comptime Model: type, comptime MetadataShape: ?type) type {
+	if (MetadataShape) |MetadataType| {
+		return struct {
+			model: Model,
+			metadata: MetadataType,
+		};
+	} else {
+		return Model;
+	}
+}
+
 /// Type of a retrieved table data, with its retrieved relations.
-pub fn TableWithRelations(comptime TableShape: type, comptime optionalRelations: ?[]const _relations.ModelRelation) type {
+pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.ModelRelation) type {
 	if (optionalRelations) |relations| {
 		const tableType = @typeInfo(TableShape);
 
 		// Build fields list: copy the existing table type fields and add those for relations.
-		var fields: [tableType.Struct.fields.len + relations.len]std.builtin.Type.StructField = undefined;
+		var fields: [tableType.Struct.fields.len + relations.len + (if (MetadataShape) |_| 1 else 0)]std.builtin.Type.StructField = undefined;
 		// Copy base table fields.
 		@memcpy(fields[0..tableType.Struct.fields.len], tableType.Struct.fields);
 
 		// For each relation, create a new struct field in the table shape.
-		for (relations, fields[tableType.Struct.fields.len..]) |relation, *field| {
+		for (relations, fields[tableType.Struct.fields.len..(tableType.Struct.fields.len+relations.len)]) |relation, *field| {
 			// Get relation field type (optional TableShape of the related value).
 			comptime var relationImpl = relation.relation{};
 			const relationInstanceType = @TypeOf(relationImpl.relation());
@@ -34,6 +47,17 @@ pub fn TableWithRelations(comptime TableShape: type, comptime optionalRelations:
 			};
 		}
 
+		if (MetadataShape) |MetadataType| {
+			// Add metadata field.
+			fields[tableType.Struct.fields.len + relations.len] = std.builtin.Type.StructField{
+				.name = "_zrm_metadata",
+				.type = MetadataType,
+				.default_value = null,
+				.is_comptime = false,
+				.alignment = @alignOf(MetadataType),
+			};
+		}
+
 		// Build the new type.
 		return @Type(std.builtin.Type{
 			.Struct = .{
@@ -50,7 +74,7 @@ pub fn TableWithRelations(comptime TableShape: type, comptime optionalRelations:
 }
 
 /// Convert a value of the fully retrieved type to the TableShape type.
-pub fn toTableShape(comptime TableShape: type, comptime optionalRelations: ?[]const _relations.ModelRelation, value: TableWithRelations(TableShape, optionalRelations)) TableShape {
+pub fn toTableShape(comptime TableShape: type, comptime MetadataShape: ?type, comptime optionalRelations: ?[]const _relations.ModelRelation, value: TableWithRelations(TableShape, MetadataShape, optionalRelations)) TableShape {
 	if (optionalRelations) |_| {
 		// Make a structure of TableShape type.
 		var tableValue: TableShape = undefined;
@@ -69,7 +93,7 @@ pub fn toTableShape(comptime TableShape: type, comptime optionalRelations: ?[]co
 }
 
 /// Generic interface of a query result reader.
-pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
+pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.ModelRelation) type {
 	return struct {
 		const Self = @This();
 
@@ -77,12 +101,12 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 		pub const Instance = struct {
 			__interface: struct {
 				instance: *anyopaque,
-				next: *const fn (self: *anyopaque) anyerror!?TableWithRelations(TableShape, inlineRelations),
+				next: *const fn (self: *anyopaque) anyerror!?TableWithRelations(TableShape, MetadataShape, inlineRelations),
 			},
 
 			allocator: std.mem.Allocator,
 
-			pub fn next(self: Instance) !?TableWithRelations(TableShape, inlineRelations) {
+			pub fn next(self: Instance) !?TableWithRelations(TableShape, MetadataShape, inlineRelations) {
 				return self.__interface.next(self.__interface.instance);
 			}
 		};
@@ -100,11 +124,13 @@ pub fn QueryResultReader(comptime TableShape: type, comptime inlineRelations: ?[
 }
 
 /// Map query result to repository model structures, and load the given relations.
-pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: _repository.RepositoryConfiguration(Model, TableShape), comptime inlineRelations: ?[]const _relations.ModelRelation, comptime relations: ?[]const _relations.ModelRelation) type {
-	_ = relations;
+pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime MetadataShape: ?type, comptime repositoryConfig: _repository.RepositoryConfiguration(Model, TableShape), comptime inlineRelations: ?[]const _relations.ModelRelation, comptime relations: ?[]const _relations.ModelRelation) type {
 	return struct {
 		/// Map the query result to a repository result, with all the required relations.
-		pub fn map(allocator: std.mem.Allocator, queryReader: QueryResultReader(TableShape, inlineRelations)) !_repository.RepositoryResult(Model) {
+		pub fn map(comptime withMetadata: bool, allocator: std.mem.Allocator, connector: _database.Connector, queryReader: QueryResultReader(TableShape, MetadataShape, inlineRelations)) !_repository.RepositoryResult(if (withMetadata) ModelWithMetadata(Model, MetadataShape) else Model) {
+			// Get result type depending on metadata
+			const ResultType = if (withMetadata) ModelWithMetadata(Model, MetadataShape) else Model;
+
 			// Create an arena for mapper data.
 			var mapperArena = std.heap.ArenaAllocator.init(allocator);
 
@@ -112,14 +138,14 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime re
 			const reader = try queryReader.init(mapperArena.allocator());
 
 			// Initialize models list.
-			var models = std.ArrayList(*Model).init(allocator);
+			var models = std.ArrayList(*ResultType).init(allocator);
 			defer models.deinit();
 
 			// Get all raw models from the result reader.
 			while (try reader.next()) |rawModel| {
 				// Parse each raw model from the reader.
-				const model = try allocator.create(Model);
-				model.* = try repositoryConfig.fromSql(toTableShape(TableShape, inlineRelations, rawModel));
+				const model = try allocator.create(ResultType);
+				(if (withMetadata) model.model else model.*) = try repositoryConfig.fromSql(toTableShape(TableShape, MetadataShape, inlineRelations, rawModel));
 
 				// Map inline relations.
 				if (inlineRelations) |_inlineRelations| {
@@ -136,14 +162,69 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime re
 					}
 				}
 
+				if (withMetadata) {
+					// Set model metadata.
+					model.metadata = rawModel._zrm_metadata;
+				}
+
 				try models.append(model);
 			}
 
-			//TODO load relations?
+			if (relations) |relationsToLoad| {
+				inline for (relationsToLoad) |relation| {
+					const comptimeRelation = @constCast(&relation.relation{}).relation();
+					var relationImpl = relation.relation{};
+					const relationInstance = relationImpl.runtimeRelation();
+
+					// Build query for the relation to get.
+					const query: *comptimeRelation.getQueryType() = @ptrCast(@alignCast(
+						try relationInstance.buildQuery("relations." ++ relation.field ++ ".", @ptrCast(models.items), allocator, connector)
+					));
+					defer {
+						query.deinit();
+						allocator.destroy(query);
+					}
+
+					// Get related models.
+					const relatedModels = try query.getWithMetadata(mapperArena.allocator());
+
+					// Create a map with related models.
+					const RelatedModelsListType = std.ArrayList(@TypeOf(relatedModels.models[0].model));
+					const RelatedModelsMapType = std.AutoHashMap(std.meta.FieldType(@TypeOf(relatedModels.models[0].metadata), .__zrm_relation_key), RelatedModelsListType);
+					var relatedModelsMap = RelatedModelsMapType.init(allocator);
+					defer relatedModelsMap.deinit();
+
+					// Fill the map of related models, indexing them by the relation key.
+					for (relatedModels.models) |relatedModel| {
+						// For each related model, put it in the map at the relation key.
+						var modelsList = try relatedModelsMap.getOrPut(relatedModel.metadata.__zrm_relation_key);
+
+						if (!modelsList.found_existing) {
+							// Initialize the related models list.
+							modelsList.value_ptr.* = RelatedModelsListType.init(mapperArena.allocator());
+						}
+
+						// Add the current related model to the list.
+						try modelsList.value_ptr.append(relatedModel.model);
+					}
+
+					// For each model, at the grouped related models if there are some.
+					for (models.items) |model| {
+						@field(model, relation.field) = (
+							if (relatedModelsMap.getPtr(@field(model, repositoryConfig.key[0]))) |relatedModelsList|
+								// There are related models, set them.
+								try relatedModelsList.toOwnedSlice()
+							else
+								// No related models, set an empty array.
+								&[0](@TypeOf(relatedModels.models[0].model)){}
+						);
+					}
+				}
+			}
 
 			// Return a result with the models.
-			return _repository.RepositoryResult(Model).init(allocator,
-				zollections.Collection(Model).init(allocator, try models.toOwnedSlice()),
+			return _repository.RepositoryResult(ResultType).init(allocator,
+				zollections.Collection(ResultType).init(allocator, try models.toOwnedSlice()),
 				mapperArena,
 			);
 		}

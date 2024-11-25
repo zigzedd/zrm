@@ -22,7 +22,7 @@ fn initDatabase() !void {
 }
 
 /// An example submodel, child of the example model.
-const MySubmodel = struct {
+pub const MySubmodel = struct {
 	uuid: []const u8,
 	label: []const u8,
 

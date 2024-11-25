@@ -216,11 +216,11 @@ pub fn SelectBuilder(comptime TableShape: type) type {
 /// Build a SELECT query part for a given table, renaming columns with the given prefix, at comptime.
 pub fn SelectBuild(comptime TableShape: type, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
 	// Initialize the selected columns string.
-	var columnsSelect: []const u8 = "";
+	comptime var columnsSelect: []const u8 = "";
 
-	var first = true;
+	comptime var first = true;
 	// For each field, generate a format string.
-	for (@typeInfo(TableShape).Struct.fields) |field| {
+	inline for (@typeInfo(TableShape).Struct.fields) |field| {
 		// Add ", " between all selected columns (just not the first one).
 		if (first) {
 			first = false;

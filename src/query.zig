@@ -28,10 +28,12 @@ const CompiledRelations = struct {
 
 /// Repository models query manager.
 /// Manage query string build and its execution.
-pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.ModelRelation) type {
+pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.ModelRelation, comptime MetadataShape: ?type) type {
 	const compiledRelations = comptime compile: {
 		// Inline relations list.
 		var inlineRelations: []relations.ModelRelation = &[0]relations.ModelRelation{};
+		// Other relations list.
+		var otherRelations: []relations.ModelRelation = &[0]relations.ModelRelation{};
 
 		if (with) |_with| {
 			// If there are relations to eager load, prepare their query.
@@ -57,12 +59,15 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relationInstance.genSelect(tableAlias, fieldsPrefix))));
 					// Generate joined table for the relation.
 					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relationInstance.genJoin(tableAlias))));
+				} else {
+					// Add the current relation to other relations.
+					otherRelations = @ptrCast(@constCast(_comptime.append(otherRelations, relation)));
 				}
 			}
 
 			break :compile CompiledRelations{
 				.inlineRelations = inlineRelations,
-				.otherRelations = &[0]relations.ModelRelation{},
+				.otherRelations = otherRelations,
 				.inlineSelect = if (inlineSelect.len > 0) ", " ++ _comptime.join(", ", inlineSelect) else "",
 				.inlineJoins = if (inlineJoins.len > 0) " " ++ _comptime.join(" ", inlineJoins) else "",
 			};
@@ -88,7 +93,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		const Self = @This();
 
 		/// Result mapper type.
-		pub const ResultMapper = _result.ResultMapper(Model, TableShape, repositoryConfig, compiledRelations.inlineRelations, compiledRelations.otherRelations);
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, MetadataShape, repositoryConfig, compiledRelations.inlineRelations, compiledRelations.otherRelations);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -285,8 +290,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			return result;
 		}
 
-		/// Retrieve queried models.
-		pub fn get(self: *Self, allocator: std.mem.Allocator) !repository.RepositoryResult(Model) {
+		/// Generic queried models retrieval.
+		fn _get(self: *Self, allocator: std.mem.Allocator, comptime withMetadata: bool) !repository.RepositoryResult(if (withMetadata) _result.ModelWithMetadata(Model, MetadataShape) else Model) {
 			// Build SQL query if it wasn't built.
 			if (self.sql) |_| {} else { try self.buildSql(); }
 
@@ -296,8 +301,22 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			defer queryResult.deinit();
 
 			// Map query results.
-			var postgresqlReader = postgresql.QueryResultReader(TableShape, compiledRelations.inlineRelations).init(queryResult);
-			return try ResultMapper.map(allocator, postgresqlReader.reader());
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, MetadataShape, compiledRelations.inlineRelations).init(queryResult);
+			return try ResultMapper.map(withMetadata, allocator, self.connector, postgresqlReader.reader());
+		}
+
+		/// Retrieve queried models.
+		pub fn get(self: *Self, allocator: std.mem.Allocator) !repository.RepositoryResult(Model) {
+			return self._get(allocator, false);
+		}
+
+		/// Retrieved queries models with metadata.
+		pub fn getWithMetadata(self: *Self, allocator: std.mem.Allocator) !repository.RepositoryResult(_result.ModelWithMetadata(Model, MetadataShape)) {
+			if (MetadataShape) |_| {
+				return self._get(allocator, true);
+			} else {
+				unreachable;
+			}
 		}
 
 		/// Initialize a new repository query.

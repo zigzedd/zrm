@@ -3,7 +3,7 @@ const std = @import("std");
 /// Simple ModelFromSql and ModelToSql functions for models which have the same table definition.
 pub fn TableModel(comptime Model: type, comptime TableShape: type) type {
 	// Get fields of the model, which must be the same as the table shape.
-	const fields = std.meta.fields(Model);
+	const fields = std.meta.fields(TableShape);
 
 	return struct {
 		/// Simply copy all fields from model to table.

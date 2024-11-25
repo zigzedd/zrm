@@ -61,7 +61,7 @@ pub fn TableWithRelations(comptime TableShape: type, comptime MetadataShape: ?ty
 			.Struct = .{
 				.layout = tableType.Struct.layout,
 				.fields = &fields,
-				.decls = tableType.Struct.decls,
+				.decls = &[0]std.builtin.Type.Declaration{},
 				.is_tuple = tableType.Struct.is_tuple,
 				.backing_integer = tableType.Struct.backing_integer,
 			},

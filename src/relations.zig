@@ -112,18 +112,18 @@ pub fn typedMany(
 						.through => |through| {
 							// Add SELECT.
 							query.select(.{
-								.sql = try std.fmt.allocPrint(query.arena.allocator(), baseSelect ++ ", \"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"", .{prefix}),
+								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							query.join(.{
-								.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ through.table ++ "\" ON AS \"{s}pivot" ++ "\" " ++
-									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"{s}pivot" ++ "\"." ++ through.joinModelKey, .{prefix, prefix}),
+								.sql = "INNER JOIN \"" ++ through.table ++ "\" ON AS \"" ++ prefix ++ "pivot" ++ "\" " ++
+									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinModelKey,
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							// Build WHERE condition.
-							try query.whereIn(FromKeyType, try std.fmt.allocPrint(query.arena.allocator(), "\"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", .{prefix}), modelsIds);
+							try query.whereIn(FromKeyType, "\"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", modelsIds);
 						},
 					}
 
@@ -289,8 +289,8 @@ fn typedOne(
 							});
 
 							query.join((_sql.RawQuery{
-								.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ fromRepositoryConfig.table ++ "\" AS \"{s}related" ++ "\" ON " ++
-									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"{s}related" ++ "\"." ++ foreignKey, .{prefix, prefix}),
+								.sql = "INNER JOIN \"" ++ fromRepositoryConfig.table ++ "\" AS \"" ++ prefix ++ "related" ++ "\" ON " ++
+									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"" ++ prefix ++ "related" ++ "\"." ++ foreignKey,
 								.params = &[0]_sql.RawQueryParameter{},
 							}));
 
@@ -310,18 +310,18 @@ fn typedOne(
 						.through => |through| {
 							// Add SELECT.
 							query.select(.{
-								.sql = try std.fmt.allocPrint(query.arena.allocator(), baseSelect ++ ", \"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"", .{prefix}),
+								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							query.join(.{
-								.sql = try std.fmt.allocPrint(query.arena.allocator(), "INNER JOIN \"" ++ through.table ++ "\" AS \"{s}pivot" ++ "\" ON " ++
-									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"{s}pivot" ++ "\"." ++ through.joinModelKey, .{prefix, prefix}),
+								.sql = "INNER JOIN \"" ++ through.table ++ "\" AS \"" ++ prefix ++ "pivot" ++ "\" ON " ++
+									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinModelKey,
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							// Build WHERE condition.
-							try query.whereIn(FromKeyType, try std.fmt.allocPrint(query.arena.allocator(), "\"{s}pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", .{prefix}), modelsIds);
+							try query.whereIn(FromKeyType, "\"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", modelsIds);
 						},
 					}
 

@@ -177,7 +177,7 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 					const relationInstance = relationImpl.runtimeRelation();
 
 					// Build query for the relation to get.
-					const query: *comptimeRelation.getQueryType() = @ptrCast(@alignCast(
+					const query: *comptimeRelation.QueryType = @ptrCast(@alignCast(
 						try relationInstance.buildQuery("relations." ++ relation.field ++ ".", @ptrCast(models.items), allocator, connector)
 					));
 					defer {

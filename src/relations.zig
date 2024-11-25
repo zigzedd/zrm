@@ -90,10 +90,6 @@ pub fn typedMany(
 			return _genSelect(table, prefix);
 		}
 
-		fn getQueryType() type {
-			return QueryType;
-		}
-
 		fn buildQuery(_: *anyopaque, prefix: []const u8, opaqueModels: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
 			const models: []const *FromModel = @ptrCast(@alignCast(opaqueModels));
 
@@ -153,8 +149,8 @@ pub fn typedMany(
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
-					.getQueryType = getQueryType,
 				},
+				.QueryType = QueryType,
 			};
 		}
 
@@ -283,10 +279,6 @@ fn typedOne(
 			return _genSelect(table, prefix);
 		}
 
-		fn getQueryType() type {
-			return QueryType;
-		}
-
 		fn buildQuery(_: *anyopaque, prefix: []const u8, opaqueModels: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
 			const models: []const *FromModel = @ptrCast(@alignCast(opaqueModels));
 
@@ -363,8 +355,8 @@ fn typedOne(
 					.inlineMapping = inlineMapping,
 					.genJoin = genJoin,
 					.genSelect = genSelect,
-					.getQueryType = getQueryType,
 				},
+				.QueryType = QueryType,
 			};
 		}
 
@@ -394,8 +386,9 @@ pub fn Relation(comptime ToModel: type, comptime ToTable: type) type {
 			inlineMapping: *const fn (self: *anyopaque) bool,
 			genJoin: *const fn (self: *anyopaque, comptime alias: []const u8) []const u8,
 			genSelect: *const fn (self: *anyopaque, comptime table: []const u8, comptime prefix: []const u8) []const u8,
-			getQueryType: *const fn () type,
 		},
+
+		QueryType: type,
 
 		/// Read the related model repository configuration.
 		pub fn getRepositoryConfiguration(self: Self) repository.RepositoryConfiguration(ToModel, ToTable) {
@@ -416,11 +409,6 @@ pub fn Relation(comptime ToModel: type, comptime ToTable: type) type {
 		/// Generate a SELECT clause to retrieve the associated data, with the given table and prefix.
 		pub fn genSelect(self: Self, comptime table: []const u8, comptime prefix: []const u8) []const u8 {
 			return self._interface.genSelect(self._interface.instance, table, prefix);
-		}
-
-		/// Get relation query type.
-		pub fn getQueryType(self: Self) type {
-			return self._interface.getQueryType();
 		}
 	};
 }

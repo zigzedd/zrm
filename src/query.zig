@@ -160,6 +160,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			if (repositoryConfig.key.len == 1) {
 				// Find key name and its type.
 				const keyName = repositoryConfig.key[0];
+				const qualifiedKeyName = "\"" ++ repositoryConfig.table ++ "\"." ++ keyName;
 				const keyType = std.meta.fields(TableShape)[std.meta.fieldIndex(TableShape, keyName).?].type;
 
 				// Accept arrays / slices of keys, and simple keys.
@@ -172,28 +173,28 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 									.Array => {
 										if (ptr.child == u8)
 											// If the child is a string, use it as a simple value.
-											try self.whereValue(KeyType, keyName, "=", modelKey)
+											try self.whereValue(KeyType, qualifiedKeyName, "=", modelKey)
 										else
 											// Otherwise, use it as an array.
-											try self.whereIn(keyType, keyName, modelKey);
+											try self.whereIn(keyType, qualifiedKeyName, modelKey);
 									},
 									// Add a simple condition with the pointed value.
-									else => try self.whereValue(keyType, keyName, "=", modelKey.*),
+									else => try self.whereValue(keyType, qualifiedKeyName, "=", modelKey.*),
 								}
 							},
 							// Add a whereIn with the slice.
 							else => {
 								if (ptr.child == u8)
 									// If the child is a string, use it as a simple value.
-									try self.whereValue(KeyType, keyName, "=", modelKey)
+									try self.whereValue(KeyType, qualifiedKeyName, "=", modelKey)
 								else
 									// Otherwise, use it as an array.
-									try self.whereIn(keyType, keyName, modelKey);
+									try self.whereIn(keyType, qualifiedKeyName, modelKey);
 							},
 						}
 					},
 					// Add a simple condition with the given value.
-					else => try self.whereValue(keyType, keyName, "=", modelKey),
+					else => try self.whereValue(keyType, qualifiedKeyName, "=", modelKey),
 				}
 			} else {
 				// Accept arrays / slices of keys, and simple keys.

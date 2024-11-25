@@ -38,7 +38,6 @@ pub fn bindQueryParameter(statement: *pg.Stmt, parameter: _sql.RawQueryParameter
 pub fn handlePostgresqlError(err: anyerror, connection: *database.Connection, statement: *pg.Stmt) anyerror {
 	// Release connection and statement as query failed.
 	defer statement.deinit();
-	defer connection.release();
 
 	return handleRawPostgresqlError(err, connection.connection);
 }

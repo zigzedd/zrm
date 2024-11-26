@@ -171,7 +171,8 @@ pub const OneConfiguration = union(enum) {
 	/// Reverse one-to-one relation using distant foreign key.
 	reverse: struct {
 		/// The distant foreign key name.
-		foreignKey: []const u8,
+		/// Use the default key name of the related model.
+		foreignKey: ?[]const u8 = null,
 		/// Current model key name.
 		/// Use the default key name of the current model.
 		modelKey: ?[]const u8 = null,
@@ -221,14 +222,14 @@ fn typedOne(
 			// Get foreign key from relation config or repository config.
 			const foreignKey = switch (config) {
 				.direct => |direct| direct.foreignKey,
-				.reverse => |reverse| reverse.foreignKey,
+				.reverse => |reverse| if (reverse.foreignKey) |_foreignKey| _foreignKey else toRepositoryConfig.key[0],
 				.through => |through| if (through.foreignKey) |_foreignKey| _foreignKey else fromRepositoryConfig.key[0],
 			};
 
 			// Get model key from relation config or repository config.
 			const modelKey = switch (config) {
 				.direct => |direct| if (direct.modelKey) |_modelKey| _modelKey else toRepositoryConfig.key[0],
-				.reverse => |reverse| if (reverse.modelKey) |_modelKey| _modelKey else toRepositoryConfig.key[0],
+				.reverse => |reverse| if (reverse.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
 				.through => |through| if (through.modelKey) |_modelKey| _modelKey else toRepositoryConfig.key[0],
 			};
 

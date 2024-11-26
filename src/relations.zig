@@ -64,6 +64,7 @@ pub fn typedMany(
 				.direct => |direct| if (direct.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
 				.through => |through| if (through.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
 			};
+			_ = modelKey;
 
 			const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
 			const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null, struct {
@@ -112,18 +113,18 @@ pub fn typedMany(
 						.through => |through| {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinModelKey ++ "\" AS \"__zrm_relation_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							query.join(.{
 								.sql = "INNER JOIN \"" ++ through.table ++ "\" AS \"" ++ prefix ++ "pivot" ++ "\" " ++
-									"ON \"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinModelKey,
+									"ON \"" ++ toRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinForeignKey,
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
 							// Build WHERE condition.
-							try query.whereIn(FromKeyType, "\"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\"", modelsIds);
+							try query.whereIn(FromKeyType, "\"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinModelKey ++ "\"", modelsIds);
 						},
 					}
 

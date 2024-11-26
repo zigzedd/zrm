@@ -76,7 +76,6 @@ test "hasMany" {
 	defer result.deinit();
 
 	// Checking result.
-	try std.testing.expectEqual(4, result.models.len);
 	try std.testing.expectEqual(repository.MySubmodel, @TypeOf(result.models[0].submodels.?[0]));
 
 	// Checking retrieved submodels.

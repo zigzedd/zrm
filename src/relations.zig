@@ -242,19 +242,19 @@ fn typedOne(
 					return switch (config) {
 						.direct => (
 							"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
-								"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = \"" ++ alias ++ "\"." ++ modelKey
+								"\"" ++ fromRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" = \"" ++ alias ++ "\".\"" ++ modelKey ++ "\""
 						),
 
 						.reverse => (
 							"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
-								"\"" ++ fromRepositoryConfig.table ++ "\"." ++ modelKey ++ " = \"" ++ alias ++ "\"." ++ foreignKey
+								"\"" ++ fromRepositoryConfig.table ++ "\".\"" ++ modelKey ++ "\" = \"" ++ alias ++ "\".\"" ++ foreignKey ++ "\""
 						),
 
 						.through => |through| (
 							"LEFT JOIN \"" ++ through.table ++ "\" AS \"" ++ alias ++ "_pivot\" ON " ++
-								"\"" ++ fromRepositoryConfig.table ++ "\"." ++ foreignKey ++ " = " ++ "\"" ++ alias ++ "_pivot\"." ++ through.joinForeignKey ++
-							"LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
-								"\"" ++ alias ++ "_pivot\"." ++ through.joinModelKey ++ " = " ++ "\"" ++ alias ++ "\"." ++ modelKey
+								"\"" ++ fromRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" = " ++ "\"" ++ alias ++ "_pivot\".\"" ++ through.joinForeignKey ++ "\"" ++
+							" LEFT JOIN \"" ++ toRepositoryConfig.table ++ "\" AS \"" ++ alias ++ "\" ON " ++
+								"\"" ++ alias ++ "_pivot\".\"" ++ through.joinModelKey ++ "\" = " ++ "\"" ++ alias ++ "\".\"" ++ modelKey ++ "\""
 						),
 					};
 				}

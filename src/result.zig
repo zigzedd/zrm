@@ -131,6 +131,7 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 
 			// Create an arena for mapper data.
 			var mapperArena = std.heap.ArenaAllocator.init(allocator);
+			errdefer mapperArena.deinit();
 
 			// Initialize query result reader.
 			const reader = try queryReader.init(mapperArena.allocator());
@@ -164,6 +165,13 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 				}
 
 				try models.append(model);
+			}
+
+			errdefer {
+				// Destroy models when something bad happen.
+				for (models.items) |model| {
+					allocator.destroy(model);
+				}
 			}
 
 			if (relations) |relationsToLoad| {

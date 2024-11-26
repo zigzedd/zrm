@@ -1,19 +1,19 @@
 .{
-	.name = "zrm",
-	.version = "0.2.0",
+    .name = "zrm",
+    .version = "0.2.0",
 
-	.minimum_zig_version = "0.13.0",
+    .minimum_zig_version = "0.13.0",
 
-	.dependencies = .{
-		.zollections = .{
-			.url = "https://code.zeptotech.net/zedd/zollections/archive/v0.1.1.tar.gz",
-			.hash = "12200fe147879d72381633e6f44d76db2c8a603cda1969b4e474c15c31052dbb24b7",
-		},
-		.pg = .{
-			.url = "git+https://github.com/Madeorsk/pg.zig?ref=expose-mapper-zig-0.13#11c91a714858c517539069fca620918c77a771c7",
-			.hash = "122047c505cca855c4fb2c831bc6056527175bbd111fe2dc77488799b576da213075",
-		},
-	},
+    .dependencies = .{
+        .zollections = .{
+            .url = "https://code.zeptotech.net/zedd/zollections/archive/v0.1.1.tar.gz",
+            .hash = "12200fe147879d72381633e6f44d76db2c8a603cda1969b4e474c15c31052dbb24b7",
+        },
+        .pg = .{
+            .url = "git+https://github.com/karlseguin/pg.zig?ref=zig-0.13#bc31e767e56218e8c51f9b0e40c581219b0ac62a",
+            .hash = "1220795dd7be5bb28a29b7cf1a46233b0c370c158d7f4183c35db27f2b7db9564358",
+        },
+    },
 
-	.paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "LICENSE" },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "LICENSE" },
 }

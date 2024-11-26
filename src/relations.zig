@@ -117,8 +117,8 @@ pub fn typedMany(
 							});
 
 							query.join(.{
-								.sql = "INNER JOIN \"" ++ through.table ++ "\" ON AS \"" ++ prefix ++ "pivot" ++ "\" " ++
-									"\"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinModelKey,
+								.sql = "INNER JOIN \"" ++ through.table ++ "\" AS \"" ++ prefix ++ "pivot" ++ "\" " ++
+									"ON \"" ++ toRepositoryConfig.table ++ "\"." ++ modelKey ++ " = " ++ "\"" ++ prefix ++ "pivot" ++ "\"." ++ through.joinModelKey,
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 

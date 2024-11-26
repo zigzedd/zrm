@@ -6,4 +6,5 @@ comptime {
 	_ = @import("composite.zig");
 	_ = @import("sessions.zig");
 	_ = @import("relations.zig");
+	_ = @import("example.zig");
 }

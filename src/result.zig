@@ -150,12 +150,27 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 				if (inlineRelations) |_inlineRelations| {
 					// If there are loaded inline relations, map them to the result.
 					inline for (_inlineRelations) |relation| {
-						// Set the read inline relation value.
-						@field(model.*, relation.field) = (
+						// Read the inline related value.
+						const relatedValue = (
 							if (@field(rawModel, relation.field)) |relationVal|
 								try relation.repositoryConfiguration().fromSql(relationVal)
 							else null
 						);
+
+						if (pointedType(@TypeOf(@field(model.*, relation.field)))) |childType| {
+							if (relatedValue) |val| {
+								// Allocate pointer value.
+								@field(model.*, relation.field) = try mapperArena.allocator().create(childType);
+								// Set pointer value.
+								@field(model.*, relation.field).?.* = val;
+							} else {
+								// Set NULL value.
+								@field(model.*, relation.field) = null;
+							}
+						} else {
+							// Set simple value.
+							@field(model.*, relation.field) = relatedValue;
+						}
 					}
 				}
 
@@ -228,5 +243,18 @@ pub fn ResultMapper(comptime Model: type, comptime TableShape: type, comptime Me
 				mapperArena,
 			);
 		}
+	};
+}
+
+/// Get pointed type of the given type.
+/// Return NULL if the type is not a pointer.
+fn pointedType(@"type": type) ?type {
+	return switch (@typeInfo(@"type")) {
+		.Pointer => |ptr| ptr.child,
+		.Optional => |opt| switch (@typeInfo(opt.child)) {
+			.Pointer => |ptr| ptr.child,
+			else => null,
+		},
+		else => null,
 	};
 }

@@ -110,8 +110,7 @@ pub const UserInfo = struct {
 	user_id: i32,
 	birthdate: i64,
 
-	//TODO is there a way to solve the "struct 'example.User' depends on itself" error when adding this relation?
-	// user: ?User = null,
+	user: ?*User = null,
 };
 pub const UserInfoRepository = zrm.Repository(UserInfo, UserInfo.Table, .{
 	.table = "example_users_info",
@@ -123,11 +122,11 @@ pub const UserInfoRepository = zrm.Repository(UserInfo, UserInfo.Table, .{
 	.toSql = zrm.helpers.TableModel(UserInfo, UserInfo.Table).copyModelToTable,
 });
 pub const UserInfoRelations = UserInfoRepository.relations.define(.{
-	// .user = UserInfoRepository.relations.one(UserRepository, .{
-	// 	.direct = .{
-	// 		.foreignKey = "user_id",
-	// 	},
-	// }),
+	.user = UserInfoRepository.relations.one(UserRepository, .{
+		.direct = .{
+			.foreignKey = "user_id",
+		},
+	}),
 });
 
 pub const Message = struct {
@@ -295,6 +294,24 @@ test "user has info" {
 
 	try std.testing.expectEqual(1, secondResult.models.len);
 	try std.testing.expect(secondResult.models[0].info == null);
+
+
+
+	var thirdQuery = UserInfoRepository.QueryWith(
+		// Retrieve info of users.
+    &[_]zrm.relations.Relation{UserInfoRelations.user}
+	).init(std.testing.allocator, poolConnector.connector(), .{});
+	try thirdQuery.whereKey(2);
+	defer thirdQuery.deinit();
+
+	var thirdResult = try thirdQuery.get(std.testing.allocator);
+	defer thirdResult.deinit();
+
+	try std.testing.expectEqual(1, thirdResult.models.len);
+	try std.testing.expectEqual(876348000000000, thirdResult.models[0].birthdate);
+	try std.testing.expect(thirdResult.models[0].user != null);
+	try std.testing.expectEqual(2, thirdResult.models[0].user.?.id);
+	try std.testing.expectEqualStrings("madeorsk", thirdResult.models[0].user.?.name);
 }
 
 

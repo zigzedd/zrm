@@ -2,7 +2,7 @@
 
 To define and use inserts and updates, you must have a fully defined [repository](/docs/repositories). In this tutorial, we'll be assuming that we have a defined repository for a user model, as it's defined in [this section](/docs/repositories.html#define-a-repository).
 
-Executing inserts and updates also require to [set up a connection to your database](/docs/databases). We'll also be assuming that we have a working database connector set up, as it's defined in [this section](/docs/database#pool-connector).
+Executing inserts and updates also require to [set up a connection to your database](/docs/database). We'll also be assuming that we have a working database connector set up, as it's defined in [this section](/docs/database#pool-connector).
 
 ## Insert
 

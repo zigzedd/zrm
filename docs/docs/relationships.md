@@ -44,6 +44,8 @@ This type of relationship is used when only a single model is related. In our ch
 
 ### Direct
 
+![Direct one relation diagram](/relationships/one-direct.svg)
+
 The direct one relationship uses a local foreign key to get the related model. In other libraries, this type of relationship can be referred as "belongs to". It has two parameters:
 
 - **mandatory** `foreignKey`: name of the field / column where the related model key is stored.
@@ -61,6 +63,8 @@ const MessageRelationships = MessageRepository.relationships.define(.{
 
 ### Reverse
 
+![Reverse one relation diagram](/relationships/one-reverse.svg)
+
 The reverse one relationship uses a distant foreign key to get the related model. It can be used to get related models when they hold a foreign key to the origin model. In other libraries, this type of relationship can be referred as "has one". It has two parameters:
 
 - _optional_ `foreignKey`: name of the field / column where the related model key is stored. When none is provided, the default related model key name is used.
@@ -77,6 +81,8 @@ const UserRelationships = UserRepository.relationships.define(.{
 ```
 
 ### Through
+
+![Through one relation diagram](/relationships/one-through.svg)
 
 The through one relationship uses a pivot table to get the related model. It can be used to get related models when the foreign key is hold by an intermediate table. In other libraries, this type of relationship can be referred as "has one through". It has five parameters:
 
@@ -111,6 +117,8 @@ This type of relationship is used when only a many models are related. In our ch
 
 ### Direct
 
+![Direct many relation diagram](/relationships/many-direct.svg)
+
 The direct many relationship uses a distant foreign key to get related models. It's often used at the opposite side of a direct one relationship. In other libraries, this type of relationship can be referred as "has many". It has two parameters:
 
 - **mandatory** `foreignKey`: name of the field / column where the origin model key is stored.
@@ -127,6 +135,8 @@ const UserRelationships = UserRepository.relationships.define(.{
 ```
 
 ### Through
+
+![Through many relation diagram](/relationships/many-through.svg)
 
 The through many relationship uses a pivot table to get the related models. It can be used to get related models when the foreign key is hold by an intermediate table. In other libraries, this type of relationship can be referred as "belongs to many". It has five parameters:
 

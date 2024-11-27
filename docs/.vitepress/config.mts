@@ -44,7 +44,7 @@ export default defineConfig({
 		],
 
 		footer: {
-			message: "<a class='zeptotech' href='https://zeptotech.fr' target='_blank' ><img src='/zeptotech.svg' alt='Zeptotech' /></a> Powered by Zeptotech"
+			message: "<a class='zeptotech' href='https://zeptotech.fr' target='_blank' ><img src='/zrm/zeptotech.svg' alt='Zeptotech' /></a> Powered by Zeptotech"
 		}
 	},
 });

@@ -5,9 +5,9 @@ const _sql = @import("sql.zig");
 const repository = @import("repository.zig");
 const _query = @import("query.zig");
 
-/// Configure a "one to many" or "many to many" relation.
+/// Configure a "one to many" or "many to many" relationship.
 pub const ManyConfiguration = union(enum) {
-	/// Direct one-to-many relation using a distant foreign key.
+	/// Direct one-to-many relationship using a distant foreign key.
 	direct: struct {
 		/// The distant foreign key name pointing to the current model.
 		foreignKey: []const u8,
@@ -16,7 +16,7 @@ pub const ManyConfiguration = union(enum) {
 		modelKey: ?[]const u8 = null,
 	},
 
-	/// Used when performing a many-to-many relation through an association table.
+	/// Used when performing a many-to-many relationship through an association table.
 	through: struct {
 		/// Name of the join table.
 		table: []const u8,
@@ -33,7 +33,7 @@ pub const ManyConfiguration = union(enum) {
 	},
 };
 
-/// Make a "one to many" or "many to many" relation.
+/// Make a "one to many" or "many to many" relationship.
 pub fn many(comptime fromRepo: anytype, comptime toRepo: anytype, comptime config: ManyConfiguration) type {
 	return typedMany(
 		fromRepo.ModelType, fromRepo.TableType, fromRepo.config,
@@ -42,7 +42,7 @@ pub fn many(comptime fromRepo: anytype, comptime toRepo: anytype, comptime confi
 	);
 }
 
-/// Internal implementation of a new "one to many" or "many to many" relation.
+/// Internal implementation of a new "one to many" or "many to many" relationship.
 pub fn typedMany(
 	comptime FromModel: type, comptime FromTable: type,
 	comptime fromRepositoryConfig: repository.RepositoryConfiguration(FromModel, FromTable),
@@ -51,15 +51,15 @@ pub fn typedMany(
 	comptime config: ManyConfiguration) type {
 
 	return struct {
-		/// Relation implementation.
+		/// Relationship implementation.
 		pub fn Implementation(field: []const u8) type {
-			// Get foreign key from relation config or repository config.
+			// Get foreign key from relationship config or repository config.
 			const foreignKey = switch (config) {
 				.direct => |direct| direct.foreignKey,
 				.through => |through| if (through.foreignKey) |_foreignKey| _foreignKey else toRepositoryConfig.key[0],
 			};
 
-			// Get model key from relation config or repository config.
+			// Get model key from relationship config or repository config.
 			const modelKey = switch (config) {
 				.direct => |direct| if (direct.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
 				.through => |through| if (through.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
@@ -68,10 +68,10 @@ pub fn typedMany(
 
 			const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
 			const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null, struct {
-				__zrm_relation_key: FromKeyType,
+				__zrm_relationship_key: FromKeyType,
 			});
 
-			const alias = "relations." ++ field;
+			const alias = "relationships." ++ field;
 			const prefix = alias ++ ".";
 
 			return struct {
@@ -103,7 +103,7 @@ pub fn typedMany(
 						.direct => {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relationship_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
@@ -113,7 +113,7 @@ pub fn typedMany(
 						.through => |through| {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinModelKey ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinModelKey ++ "\" AS \"__zrm_relationship_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
@@ -131,8 +131,8 @@ pub fn typedMany(
 					return query; // Return built query.
 				}
 
-				/// Build the "many" generic relation.
-				pub fn relation(_: Self) Relation {
+				/// Build the "many" generic relationship.
+				pub fn relationship(_: Self) Relationship {
 					return .{
 						._interface = .{
 							.repositoryConfiguration = &toRepositoryConfig,
@@ -157,9 +157,9 @@ pub fn typedMany(
 }
 
 
-/// Configure a "one to one" relation.
+/// Configure a "one to one" relationship.
 pub const OneConfiguration = union(enum) {
-	/// Direct one-to-one relation using a local foreign key.
+	/// Direct one-to-one relationship using a local foreign key.
 	direct: struct {
 		/// The local foreign key name.
 		foreignKey: []const u8,
@@ -168,7 +168,7 @@ pub const OneConfiguration = union(enum) {
 		modelKey: ?[]const u8 = null,
 	},
 
-	/// Reverse one-to-one relation using distant foreign key.
+	/// Reverse one-to-one relationship using distant foreign key.
 	reverse: struct {
 		/// The distant foreign key name.
 		/// Use the default key name of the related model.
@@ -178,7 +178,7 @@ pub const OneConfiguration = union(enum) {
 		modelKey: ?[]const u8 = null,
 	},
 
-	/// Used when performing a one-to-one relation through an association table.
+	/// Used when performing a one-to-one relationship through an association table.
 	through: struct {
 		/// Name of the join table.
 		table: []const u8,
@@ -195,7 +195,7 @@ pub const OneConfiguration = union(enum) {
 	},
 };
 
-/// Make a "one to one" relation.
+/// Make a "one to one" relationship.
 pub fn one(comptime fromRepo: anytype, comptime toRepo: anytype, comptime config: OneConfiguration) type {
 	return typedOne(
 		fromRepo.ModelType, fromRepo.TableType, fromRepo.config,
@@ -204,7 +204,7 @@ pub fn one(comptime fromRepo: anytype, comptime toRepo: anytype, comptime config
 	);
 }
 
-/// Internal implementation of a new "one to one" relation.
+/// Internal implementation of a new "one to one" relationship.
 fn typedOne(
 	comptime FromModel: type, comptime FromTable: type,
 	comptime fromRepositoryConfig: repository.RepositoryConfiguration(FromModel, FromTable),
@@ -216,24 +216,24 @@ fn typedOne(
 		pub fn Implementation(field: []const u8) type {
 			const FromKeyType = std.meta.fields(FromModel)[std.meta.fieldIndex(FromModel, fromRepositoryConfig.key[0]).?].type;
 			const QueryType = _query.RepositoryQuery(ToModel, ToTable, toRepositoryConfig, null, struct {
-				__zrm_relation_key: FromKeyType,
+				__zrm_relationship_key: FromKeyType,
 			});
 
-			// Get foreign key from relation config or repository config.
+			// Get foreign key from relationship config or repository config.
 			const foreignKey = switch (config) {
 				.direct => |direct| direct.foreignKey,
 				.reverse => |reverse| if (reverse.foreignKey) |_foreignKey| _foreignKey else toRepositoryConfig.key[0],
 				.through => |through| if (through.foreignKey) |_foreignKey| _foreignKey else fromRepositoryConfig.key[0],
 			};
 
-			// Get model key from relation config or repository config.
+			// Get model key from relationship config or repository config.
 			const modelKey = switch (config) {
 				.direct => |direct| if (direct.modelKey) |_modelKey| _modelKey else toRepositoryConfig.key[0],
 				.reverse => |reverse| if (reverse.modelKey) |_modelKey| _modelKey else fromRepositoryConfig.key[0],
 				.through => |through| if (through.modelKey) |_modelKey| _modelKey else toRepositoryConfig.key[0],
 			};
 
-			const alias = "relations." ++ field;
+			const alias = "relationships." ++ field;
 			const prefix = alias ++ ".";
 
 			return struct {
@@ -286,7 +286,7 @@ fn typedOne(
 						.direct => {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ fromRepositoryConfig.table ++ "\".\"" ++ fromRepositoryConfig.key[0] ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ fromRepositoryConfig.table ++ "\".\"" ++ fromRepositoryConfig.key[0] ++ "\" AS \"__zrm_relationship_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
@@ -302,7 +302,7 @@ fn typedOne(
 						.reverse => {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ toRepositoryConfig.table ++ "\".\"" ++ foreignKey ++ "\" AS \"__zrm_relationship_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
@@ -312,7 +312,7 @@ fn typedOne(
 						.through => |through| {
 							// Add SELECT.
 							query.select(.{
-								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relation_key\"",
+								.sql = baseSelect ++ ", \"" ++ prefix ++ "pivot" ++ "\".\"" ++ through.joinForeignKey ++ "\" AS \"__zrm_relationship_key\"",
 								.params = &[0]_sql.RawQueryParameter{},
 							});
 
@@ -331,8 +331,8 @@ fn typedOne(
 					return query;
 				}
 
-				/// Build the "one" generic relation.
-				pub fn relation(_: Self) Relation {
+				/// Build the "one" generic relationship.
+				pub fn relationship(_: Self) Relationship {
 					return .{
 						._interface = .{
 							.repositoryConfiguration = &toRepositoryConfig,
@@ -356,8 +356,8 @@ fn typedOne(
 	};
 }
 
-/// Generic model relation interface.
-pub const Relation = struct {
+/// Generic model relationship interface.
+pub const Relationship = struct {
 	const Self = @This();
 
 	_interface: struct {
@@ -372,14 +372,14 @@ pub const Relation = struct {
 	TableShape: type,
 	/// Field where to put the related model(s).
 	field: []const u8,
-	/// Table alias of the relation.
+	/// Table alias of the relationship.
 	alias: []const u8,
-	/// Prefix of fields of the relation.
+	/// Prefix of fields of the relationship.
 	prefix: []const u8,
 	/// Type of a query of the related models.
 	QueryType: type,
 
-	/// Set if relation mapping is done inline: this means that it's done at the same time the model is mapped,
+	/// Set if relationship mapping is done inline: this means that it's done at the same time the model is mapped,
 	/// and that the associated data will be retrieved in the main query.
 	inlineMapping: bool,
 	/// In case of inline mapping, the JOIN clause to retrieve the associated data.
@@ -387,8 +387,8 @@ pub const Relation = struct {
 	/// The SELECT clause to retrieve the associated data.
 	select: []const u8,
 
-	/// Build the query to retrieve relation data.
-	/// Is always used when inline mapping is not possible, but also when loading relations lazily.
+	/// Build the query to retrieve relationship data.
+	/// Is always used when inline mapping is not possible, but also when loading relationships lazily.
 	pub fn buildQuery(self: Self, models: []const *anyopaque, allocator: std.mem.Allocator, connector: _database.Connector) !*anyopaque {
 		return self._interface.buildQuery(models, allocator, connector);
 	}
@@ -402,10 +402,10 @@ pub const Relation = struct {
 };
 
 
-/// Structure of an eager loaded relation.
+/// Structure of an eager loaded relationship.
 pub const Eager = struct {
-	/// The relation to eager load.
-	relation: Relation,
-	/// Subrelations to eager load.
+	/// The relationship to eager load.
+	relationship: Relationship,
+	/// Subrelationships to eager load.
 	with: []const Eager,
 };

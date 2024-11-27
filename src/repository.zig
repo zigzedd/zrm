@@ -3,7 +3,7 @@ const zollections = @import("zollections");
 const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const _conditions = @import("conditions.zig");
-const _relations = @import("relations.zig");
+const _relationships = @import("relationships.zig");
 const query = @import("query.zig");
 const insert = @import("insert.zig");
 const update = @import("update.zig");
@@ -74,18 +74,18 @@ pub fn ModelKeyType(comptime Model: type, comptime TableShape: type, comptime co
 	}
 }
 
-/// Model relations definition type.
-pub fn RelationsDefinitionType(comptime rawDefinition: anytype) type {
+/// Model relationships definition type.
+pub fn RelationshipsDefinitionType(comptime rawDefinition: anytype) type {
 	const rawDefinitionType = @typeInfo(@TypeOf(rawDefinition));
 
-	// Build relations fields and implementations fields.
+	// Build relationships fields and implementations fields.
 	var fields: [1 + rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
 	var implementationsFields: [rawDefinitionType.Struct.fields.len]std.builtin.Type.StructField = undefined;
 
 	inline for (rawDefinitionType.Struct.fields, fields[1..], &implementationsFields) |originalField, *field, *implementationField| {
 		field.* = std.builtin.Type.StructField{
 			.name = originalField.name,
-			.type = _relations.Relation,
+			.type = _relationships.Relationship,
 			.default_value = null,
 			.is_comptime = false,
 			.alignment = @alignOf(type),
@@ -144,34 +144,34 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 		/// Type of one model key.
 		pub const KeyType = ModelKeyType(Model, TableShape, config);
 
-		pub const relations = struct {
-			/// Make a "one to one" relation.
-			pub fn one(comptime toRepo: anytype, comptime oneConfig: _relations.OneConfiguration) type {
-				return _relations.one(Self, toRepo, oneConfig);
+		pub const relationships = struct {
+			/// Make a "one to one" relationship.
+			pub fn one(comptime toRepo: anytype, comptime oneConfig: _relationships.OneConfiguration) type {
+				return _relationships.one(Self, toRepo, oneConfig);
 			}
 
-			/// Make a "one to many" or "many to many" relation.
-			pub fn many(comptime toRepo: anytype, comptime manyConfig: _relations.ManyConfiguration) type {
-				return _relations.many(Self, toRepo, manyConfig);
+			/// Make a "one to many" or "many to many" relationship.
+			pub fn many(comptime toRepo: anytype, comptime manyConfig: _relationships.ManyConfiguration) type {
+				return _relationships.many(Self, toRepo, manyConfig);
 			}
 
-			/// Define a relations object for a repository.
-			pub fn define(rawDefinition: anytype) RelationsDefinitionType(rawDefinition) {
+			/// Define a relationships object for a repository.
+			pub fn define(rawDefinition: anytype) RelationshipsDefinitionType(rawDefinition) {
 				const rawDefinitionType = @TypeOf(rawDefinition);
 
-				// Initialize final relations definition.
-				var definition: RelationsDefinitionType(rawDefinition) = undefined;
+				// Initialize final relationships definition.
+				var definition: RelationshipsDefinitionType(rawDefinition) = undefined;
 
 				definition._implementations = .{};
 
 				// Check that the definition structure only include known fields.
 				inline for (std.meta.fieldNames(rawDefinitionType)) |fieldName| {
 					if (!@hasField(Model, fieldName)) {
-						@compileError("No corresponding field for relation " ++ fieldName);
+						@compileError("No corresponding field for relationship " ++ fieldName);
 					}
 
-					// Alter definition structure to set the relation instance.
-					@field(definition, fieldName) = @field(definition._implementations, fieldName).relation();
+					// Alter definition structure to set the relationship instance.
+					@field(definition, fieldName) = @field(definition._implementations, fieldName).relationship();
 				}
 
 				// Return altered definition structure.
@@ -179,7 +179,7 @@ pub fn Repository(comptime Model: type, comptime TableShape: type, comptime repo
 			}
 		};
 
-		pub fn QueryWith(comptime with: []const _relations.Relation) type {
+		pub fn QueryWith(comptime with: []const _relationships.Relationship) type {
 			return query.RepositoryQuery(Model, TableShape, config, with, null);
 		}
 

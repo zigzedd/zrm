@@ -5,7 +5,7 @@ const global = @import("global.zig");
 const errors = @import("errors.zig");
 const database = @import("database.zig");
 const _sql = @import("sql.zig");
-const _relations = @import("relations.zig");
+const _relationships = @import("relationships.zig");
 const repository = @import("repository.zig");
 const _result = @import("result.zig");
 
@@ -213,29 +213,29 @@ pub fn makeMapper(comptime T: type, result: *pg.Result, allocator: std.mem.Alloc
 }
 
 /// PostgreSQL implementation of the query result reader.
-pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelations: ?[]const _relations.Relation) type {
-	const InstanceInterface = _result.QueryResultReader(TableShape, MetadataShape, inlineRelations).Instance;
+pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?type, comptime inlineRelationships: ?[]const _relationships.Relationship) type {
+	const InstanceInterface = _result.QueryResultReader(TableShape, MetadataShape, inlineRelationships).Instance;
 
-	// Build relations mappers container type.
-	const RelationsMappersType = comptime typeBuilder: {
-		if (inlineRelations) |_inlineRelations| {
-			// Make a field for each relation.
-			var fields: [_inlineRelations.len]std.builtin.Type.StructField = undefined;
+	// Build relationships mappers container type.
+	const RelationshipsMappersType = comptime typeBuilder: {
+		if (inlineRelationships) |_inlineRelationships| {
+			// Make a field for each relationship.
+			var fields: [_inlineRelationships.len]std.builtin.Type.StructField = undefined;
 
-			for (_inlineRelations, &fields) |relation, *field| {
-				// Get relation field type (TableShape of the related value).
-				const relationFieldType = PgMapper(relation.TableShape);
+			for (_inlineRelationships, &fields) |relationship, *field| {
+				// Get relationship field type (TableShape of the related value).
+				const relationshipFieldType = PgMapper(relationship.TableShape);
 
 				field.* = .{
-					.name = relation.field ++ [0:0]u8{},
-					.type = relationFieldType,
+					.name = relationship.field ++ [0:0]u8{},
+					.type = relationshipFieldType,
 					.default_value = null,
 					.is_comptime = false,
-					.alignment = @alignOf(relationFieldType),
+					.alignment = @alignOf(relationshipFieldType),
 				};
 			}
 
-			// Build type with one field for each relation.
+			// Build type with one field for each relationship.
 			break :typeBuilder @Type(std.builtin.Type{
 				.Struct = .{
 					.layout = std.builtin.Type.ContainerLayout.auto,
@@ -265,9 +265,9 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 			/// Main object mapper.
 			mainMapper: PgMapper(TableShape) = undefined,
 			metadataMapper: PgMapper(MetadataShape orelse struct {}) = undefined,
-			relationsMappers: RelationsMappersType = undefined,
+			relationshipsMappers: RelationshipsMappersType = undefined,
 
-			fn next(opaqueSelf: *anyopaque) !?_result.TableWithRelations(TableShape, MetadataShape, inlineRelations) {
+			fn next(opaqueSelf: *anyopaque) !?_result.TableWithRelationships(TableShape, MetadataShape, inlineRelationships) {
 				const self: *Instance = @ptrCast(@alignCast(opaqueSelf));
 
 				// Try to get the next row.
@@ -277,17 +277,17 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 				const mainTable = try self.mainMapper.next(&row) orelse return null;
 
 				// Initialize the result.
-				var result: _result.TableWithRelations(TableShape, MetadataShape, inlineRelations) = undefined;
+				var result: _result.TableWithRelationships(TableShape, MetadataShape, inlineRelationships) = undefined;
 
 				// Copy each basic table field.
 				inline for (std.meta.fields(TableShape)) |field| {
 					@field(result, field.name) = @field(mainTable, field.name);
 				}
 
-				if (inlineRelations) |_inlineRelations| {
-					// For each relation, retrieve its value and put it in the result.
-					inline for (_inlineRelations) |relation| {
-						@field(result, relation.field) = @field(self.relationsMappers, relation.field).next(&row) catch null;
+				if (inlineRelationships) |_inlineRelationships| {
+					// For each relationship, retrieve its value and put it in the result.
+					inline for (_inlineRelationships) |relationship| {
+						@field(result, relationship.field) = @field(self.relationshipsMappers, relationship.field).next(&row) catch null;
 					}
 				}
 
@@ -323,11 +323,11 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 				self.instance.metadataMapper = try makeMapper(MetadataType, self.result, allocator, null);
 			}
 
-			if (inlineRelations) |_inlineRelations| {
-				// Initialize mapper for each relation.
-				inline for (_inlineRelations) |relation| {
-					@field(self.instance.relationsMappers, relation.field) =
-						try makeMapper(relation.TableShape, self.result, allocator, "relations." ++ relation.field ++ ".");
+			if (inlineRelationships) |_inlineRelationships| {
+				// Initialize mapper for each relationship.
+				inline for (_inlineRelationships) |relationship| {
+					@field(self.instance.relationshipsMappers, relationship.field) =
+						try makeMapper(relationship.TableShape, self.result, allocator, "relationships." ++ relationship.field ++ ".");
 				}
 			}
 
@@ -335,7 +335,7 @@ pub fn QueryResultReader(comptime TableShape: type, comptime MetadataShape: ?typ
 		}
 
 		/// Get the generic reader instance.
-		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, MetadataShape, inlineRelations) {
+		pub fn reader(self: *Self) _result.QueryResultReader(TableShape, MetadataShape, inlineRelationships) {
 			return .{
 				._interface = .{
 					.instance = self,

@@ -6,7 +6,7 @@ const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
 const _conditions = @import("conditions.zig");
-const relations = @import("relations.zig");
+const _relationships = @import("relationships.zig");
 const repository = @import("repository.zig");
 const _comptime = @import("comptime.zig");
 const _result = @import("result.zig");
@@ -18,57 +18,57 @@ pub const RepositoryQueryConfiguration = struct {
 	where: ?_sql.RawQuery = null,
 };
 
-/// Compiled relations structure.
-const CompiledRelations = struct {
-	inlineRelations: []relations.Relation,
-	otherRelations: []relations.Relation,
+/// Compiled relationships structure.
+const CompiledRelationships = struct {
+	inlineRelationships: []_relationships.Relationship,
+	otherRelationships: []_relationships.Relationship,
 	inlineSelect: []const u8,
 	inlineJoins: []const u8,
 };
 
 /// Repository models query manager.
 /// Manage query string build and its execution.
-pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const relations.Relation, comptime MetadataShape: ?type) type {
-	const compiledRelations = comptime compile: {
-		// Inline relations list.
-		var inlineRelations: []relations.Relation = &[0]relations.Relation{};
-		// Other relations list.
-		var otherRelations: []relations.Relation = &[0]relations.Relation{};
+pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime repositoryConfig: repository.RepositoryConfiguration(Model, TableShape), comptime with: ?[]const _relationships.Relationship, comptime MetadataShape: ?type) type {
+	const compiledRelationships = comptime compile: {
+		// Inline relationships list.
+		var inlineRelationships: []_relationships.Relationship = &[0]_relationships.Relationship{};
+		// Other relationships list.
+		var otherRelationships: []_relationships.Relationship = &[0]_relationships.Relationship{};
 
 		if (with) |_with| {
-			// If there are relations to eager load, prepare their query.
+			// If there are relationships to eager load, prepare their query.
 
 			// Initialize inline select array.
 			var inlineSelect: [][]const u8 = &[0][]const u8{};
 			// Initialize inline joins array.
 			var inlineJoins: [][]const u8 = &[0][]const u8{};
 
-			for (_with) |relation| {
-				// For each relation, determine if it's inline or not.
-				if (relation.inlineMapping) {
-					// Add the current relation to inline relations.
-					inlineRelations = @ptrCast(@constCast(_comptime.append(inlineRelations, relation)));
+			for (_with) |relationship| {
+				// For each relationship, determine if it's inline or not.
+				if (relationship.inlineMapping) {
+					// Add the current relationship to inline relationships.
+					inlineRelationships = @ptrCast(@constCast(_comptime.append(inlineRelationships, relationship)));
 
-					// Generate selected columns for the relation.
-					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relation.select)));
-					// Generate joined table for the relation.
-					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relation.join)));
+					// Generate selected columns for the relationship.
+					inlineSelect = @ptrCast(@constCast(_comptime.append(inlineSelect, relationship.select)));
+					// Generate joined table for the relationship.
+					inlineJoins = @ptrCast(@constCast(_comptime.append(inlineJoins, relationship.join)));
 				} else {
-					// Add the current relation to other relations.
-					otherRelations = @ptrCast(@constCast(_comptime.append(otherRelations, relation)));
+					// Add the current relationship to other relationships.
+					otherRelationships = @ptrCast(@constCast(_comptime.append(otherRelationships, relationship)));
 				}
 			}
 
-			break :compile CompiledRelations{
-				.inlineRelations = inlineRelations,
-				.otherRelations = otherRelations,
+			break :compile CompiledRelationships{
+				.inlineRelationships = inlineRelationships,
+				.otherRelationships = otherRelationships,
 				.inlineSelect = if (inlineSelect.len > 0) ", " ++ _comptime.join(", ", inlineSelect) else "",
 				.inlineJoins = if (inlineJoins.len > 0) " " ++ _comptime.join(" ", inlineJoins) else "",
 			};
 		} else {
-			break :compile CompiledRelations{
-				.inlineRelations = &[0]relations.Relation{},
-				.otherRelations = &[0]relations.Relation{},
+			break :compile CompiledRelationships{
+				.inlineRelationships = &[0]_relationships.Relationship{},
+				.otherRelationships = &[0]_relationships.Relationship{},
 				.inlineSelect = "",
 				.inlineJoins = "",
 			};
@@ -77,8 +77,8 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 
 	// Pre-compute SQL buffer.
 	const fromClause = " FROM \"" ++ repositoryConfig.table ++ "\"";
-	const defaultSelectSql = "\"" ++ repositoryConfig.table ++ "\".*" ++ compiledRelations.inlineSelect;
-	const defaultJoin = compiledRelations.inlineJoins;
+	const defaultSelectSql = "\"" ++ repositoryConfig.table ++ "\".*" ++ compiledRelationships.inlineSelect;
+	const defaultJoin = compiledRelationships.inlineJoins;
 
 	// Model key type.
 	const KeyType = repository.ModelKeyType(Model, TableShape, repositoryConfig);
@@ -87,7 +87,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		const Self = @This();
 
 		/// Result mapper type.
-		pub const ResultMapper = _result.ResultMapper(Model, TableShape, MetadataShape, repositoryConfig, compiledRelations.inlineRelations, compiledRelations.otherRelations);
+		pub const ResultMapper = _result.ResultMapper(Model, TableShape, MetadataShape, repositoryConfig, compiledRelationships.inlineRelationships, compiledRelationships.otherRelationships);
 
 		arena: std.heap.ArenaAllocator,
 		connector: database.Connector,
@@ -296,7 +296,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 			defer queryResult.deinit();
 
 			// Map query results.
-			var postgresqlReader = postgresql.QueryResultReader(TableShape, MetadataShape, compiledRelations.inlineRelations).init(queryResult);
+			var postgresqlReader = postgresql.QueryResultReader(TableShape, MetadataShape, compiledRelationships.inlineRelationships).init(queryResult);
 			return try ResultMapper.map(withMetadata, allocator, self.connector, postgresqlReader.reader());
 		}
 

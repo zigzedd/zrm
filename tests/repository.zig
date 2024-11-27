@@ -68,8 +68,8 @@ pub const MySubmodelRepository = zrm.Repository(MySubmodel, MySubmodelTable, .{
 	.toSql = &submodelToSql,
 });
 
-pub const MySubmodelRelations = MySubmodelRepository.relations.define(.{
-	.parent = MySubmodelRepository.relations.one(MyModelRepository, .{
+pub const MySubmodelRelationships = MySubmodelRepository.relationships.define(.{
+	.parent = MySubmodelRepository.relationships.one(MyModelRepository, .{
 		.direct = .{
 			.foreignKey = "parent_id",
 		},
@@ -126,8 +126,8 @@ pub const MyModelRepository = zrm.Repository(MyModel, MyModelTable, .{
 	.toSql = &modelToSql,
 });
 
-pub const MyModelRelations = MyModelRepository.relations.define(.{
-	.submodels = MyModelRepository.relations.many(MySubmodelRepository, .{
+pub const MyModelRelationships = MyModelRepository.relationships.define(.{
+	.submodels = MyModelRepository.relationships.many(MySubmodelRepository, .{
 		.direct = .{
 			.foreignKey = "parent_id",
 		}

@@ -12,7 +12,7 @@ pub const RepositoryResult = repository.RepositoryResult;
 
 pub const Insertable = insert.Insertable;
 
-pub const relations = @import("relations.zig");
+pub const relationships = @import("relationships.zig");
 
 pub const RawQueryParameter = _sql.RawQueryParameter;
 pub const RawQuery = _sql.RawQuery;

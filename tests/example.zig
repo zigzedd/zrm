@@ -76,18 +76,18 @@ pub const UserRepository = zrm.Repository(User, User.Table, .{
 	.fromSql = zrm.helpers.TableModel(User, User.Table).copyTableToModel,
 	.toSql = zrm.helpers.TableModel(User, User.Table).copyModelToTable,
 });
-pub const UserRelations = UserRepository.relations.define(.{
-	.picture = UserRepository.relations.one(MediaRepository, .{
+pub const UserRelationships = UserRepository.relationships.define(.{
+	.picture = UserRepository.relationships.one(MediaRepository, .{
 		.direct = .{
 			.foreignKey = "picture_id",
 		}
 	}),
 
-	.info = UserRepository.relations.one(UserInfoRepository, .{
+	.info = UserRepository.relationships.one(UserInfoRepository, .{
 		.reverse = .{},
 	}),
 
-	.messages = UserRepository.relations.many(MessageRepository, .{
+	.messages = UserRepository.relationships.many(MessageRepository, .{
 		.direct = .{
 			.foreignKey = "user_id",
 		},
@@ -121,8 +121,8 @@ pub const UserInfoRepository = zrm.Repository(UserInfo, UserInfo.Table, .{
 	.fromSql = zrm.helpers.TableModel(UserInfo, UserInfo.Table).copyTableToModel,
 	.toSql = zrm.helpers.TableModel(UserInfo, UserInfo.Table).copyModelToTable,
 });
-pub const UserInfoRelations = UserInfoRepository.relations.define(.{
-	.user = UserInfoRepository.relations.one(UserRepository, .{
+pub const UserInfoRelationships = UserInfoRepository.relationships.define(.{
+	.user = UserInfoRepository.relationships.one(UserRepository, .{
 		.direct = .{
 			.foreignKey = "user_id",
 		},
@@ -157,14 +157,14 @@ pub const MessageRepository = zrm.Repository(Message, Message.Table, .{
 	.fromSql = zrm.helpers.TableModel(Message, Message.Table).copyTableToModel,
 	.toSql = zrm.helpers.TableModel(Message, Message.Table).copyModelToTable,
 });
-pub const MessageRelations = MessageRepository.relations.define(.{
-	.user = MessageRepository.relations.one(UserRepository, .{
+pub const MessageRelationships = MessageRepository.relationships.define(.{
+	.user = MessageRepository.relationships.one(UserRepository, .{
 		.direct = .{
 			.foreignKey = "user_id",
 		}
 	}),
 
-	.user_picture = MessageRepository.relations.one(MediaRepository, .{
+	.user_picture = MessageRepository.relationships.one(MediaRepository, .{
 		.through = .{
 			.table = "example_users",
 			.foreignKey = "user_id",
@@ -173,7 +173,7 @@ pub const MessageRelations = MessageRepository.relations.define(.{
 		},
 	}),
 
-	.medias = MessageRepository.relations.many(MediaRepository, .{
+	.medias = MessageRepository.relationships.many(MediaRepository, .{
 		.through = .{
 			.table = "example_messages_medias",
 			.joinModelKey = "message_id",
@@ -194,7 +194,7 @@ test "user picture media" {
 
 	var firstQuery = UserRepository.QueryWith(
 		// Retrieve picture of users.
-		&[_]zrm.relations.Relation{UserRelations.picture}
+		&[_]zrm.relationships.Relationship{UserRelationships.picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try firstQuery.whereKey(1);
 	defer firstQuery.deinit();
@@ -211,7 +211,7 @@ test "user picture media" {
 
 	var secondQuery = UserRepository.QueryWith(
 		// Retrieve picture of users.
-		&[_]zrm.relations.Relation{UserRelations.picture}
+		&[_]zrm.relationships.Relationship{UserRelationships.picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try secondQuery.whereKey(3);
 	defer secondQuery.deinit();
@@ -228,7 +228,7 @@ test "user picture media" {
 
 	var thirdQuery = UserRepository.QueryWith(
 		// Retrieve picture of users.
-		&[_]zrm.relations.Relation{UserRelations.picture}
+		&[_]zrm.relationships.Relationship{UserRelationships.picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try thirdQuery.whereKey(5);
 	defer thirdQuery.deinit();
@@ -244,7 +244,7 @@ test "user picture media" {
 
 	var fourthQuery = UserRepository.QueryWith(
 	// Retrieve picture of users.
-		&[_]zrm.relations.Relation{UserRelations.picture}
+		&[_]zrm.relationships.Relationship{UserRelationships.picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try fourthQuery.whereKey(19);
 	defer fourthQuery.deinit();
@@ -267,7 +267,7 @@ test "user has info" {
 
 	var firstQuery = UserRepository.QueryWith(
 		// Retrieve info of users.
-    &[_]zrm.relations.Relation{UserRelations.info}
+    &[_]zrm.relationships.Relationship{UserRelationships.info}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try firstQuery.whereKey(2);
 	defer firstQuery.deinit();
@@ -284,7 +284,7 @@ test "user has info" {
 
 	var secondQuery = UserRepository.QueryWith(
 		// Retrieve info of users.
-    &[_]zrm.relations.Relation{UserRelations.info}
+    &[_]zrm.relationships.Relationship{UserRelationships.info}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try secondQuery.whereKey(1);
 	defer secondQuery.deinit();
@@ -299,7 +299,7 @@ test "user has info" {
 
 	var thirdQuery = UserInfoRepository.QueryWith(
 		// Retrieve info of users.
-    &[_]zrm.relations.Relation{UserInfoRelations.user}
+    &[_]zrm.relationships.Relationship{UserInfoRelationships.user}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try thirdQuery.whereKey(2);
 	defer thirdQuery.deinit();
@@ -326,7 +326,7 @@ test "user has many messages" {
 
 	var firstQuery = UserRepository.QueryWith(
 		// Retrieve messages of users.
-		&[_]zrm.relations.Relation{UserRelations.messages}
+		&[_]zrm.relationships.Relationship{UserRelationships.messages}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try firstQuery.whereKey(1);
 	defer firstQuery.deinit();
@@ -354,7 +354,7 @@ test "user has many messages" {
 
 	var secondQuery = UserRepository.QueryWith(
 		// Retrieve messages of users.
-		&[_]zrm.relations.Relation{UserRelations.messages}
+		&[_]zrm.relationships.Relationship{UserRelationships.messages}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try secondQuery.whereKey(5);
 	defer secondQuery.deinit();
@@ -380,7 +380,7 @@ test "message has many medias through pivot table" {
 
 	var firstQuery = MessageRepository.QueryWith(
 		// Retrieve medias of messages.
-		&[_]zrm.relations.Relation{MessageRelations.medias}
+		&[_]zrm.relationships.Relationship{MessageRelationships.medias}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try firstQuery.whereKey(1);
 	defer firstQuery.deinit();
@@ -397,7 +397,7 @@ test "message has many medias through pivot table" {
 
 	var secondQuery = MessageRepository.QueryWith(
 		// Retrieve medias of messages.
-		&[_]zrm.relations.Relation{MessageRelations.medias}
+		&[_]zrm.relationships.Relationship{MessageRelationships.medias}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try secondQuery.whereKey(6);
 	defer secondQuery.deinit();
@@ -423,7 +423,7 @@ test "message has many medias through pivot table" {
 
 	var thirdQuery = MessageRepository.QueryWith(
 		// Retrieve medias of messages.
-		&[_]zrm.relations.Relation{MessageRelations.medias}
+		&[_]zrm.relationships.Relationship{MessageRelationships.medias}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try thirdQuery.whereKey(4);
 	defer thirdQuery.deinit();
@@ -448,7 +448,7 @@ test "message has one user picture URL through users table" {
 
 	var firstQuery = MessageRepository.QueryWith(
 		// Retrieve user pictures of messages.
-		&[_]zrm.relations.Relation{MessageRelations.user_picture}
+		&[_]zrm.relationships.Relationship{MessageRelationships.user_picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try firstQuery.whereKey(1);
 	defer firstQuery.deinit();
@@ -464,7 +464,7 @@ test "message has one user picture URL through users table" {
 
 	var secondQuery = MessageRepository.QueryWith(
 		// Retrieve user pictures of messages.
-		&[_]zrm.relations.Relation{MessageRelations.user_picture}
+		&[_]zrm.relationships.Relationship{MessageRelationships.user_picture}
 	).init(std.testing.allocator, poolConnector.connector(), .{});
 	try secondQuery.whereKey(4);
 	defer secondQuery.deinit();
@@ -476,4 +476,4 @@ test "message has one user picture URL through users table" {
 	try std.testing.expect(secondResult.models[0].user_picture == null);
 }
 
-//TODO try to load all one relations types in another query (with buildQuery).
+//TODO try to load all one relationships types in another query (with buildQuery).

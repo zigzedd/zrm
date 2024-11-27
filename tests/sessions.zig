@@ -36,7 +36,7 @@ test "session with rolled back transaction and savepoint" {
 
 	try session.beginTransaction();
 
-	
+
 	// First UPDATE in the transaction.
 	{
 		var firstUpdate = repository.MyModelRepository.Update(struct {

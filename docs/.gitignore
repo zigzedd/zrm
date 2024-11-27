@@ -1,0 +1,6 @@
+# Yarn
+.yarn/*
+.pnp.*
+
+# Vitepress
+.vitepress/cache

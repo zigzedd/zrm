@@ -11,7 +11,7 @@
 </h1>
 
 <h4 align="center">
-	<a href="https://code.zeptotech.net/zedd/zrm">Documentation</a>
+	<a href="https://zedd.zeptotech.net/zrm">Documentation</a>
 |
 	<a href="https://zedd.zeptotech.net/zrm/api">API</a>
 </h4>
@@ -55,9 +55,14 @@ const zrm = b.dependency("zrm", .{
 exe.root_module.addImport("zrm", zrm.module("zrm"));
 ```
 
+### Documentation
+
+A full documentation can be found on [zedd.zeptotech.net/zrm](https://zedd.zeptotech.net/zrm).
+
 ### Examples
 
-Full examples can be found in `tests` directory:
+Some examples can be found in `tests` directory:
 
+- [`tests/example.zig`](https://code.zeptotech.net/zedd/zrm/src/branch/main/tests/example.zig)
 - [`tests/repository.zig`](https://code.zeptotech.net/zedd/zrm/src/branch/main/tests/repository.zig)
 - [`tests/composite.zig`](https://code.zeptotech.net/zedd/zrm/src/branch/main/tests/composite.zig)

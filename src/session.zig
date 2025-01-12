@@ -12,6 +12,9 @@ pub const Session = struct {
 	/// The active connection for the session.
 	connection: *pg.Conn,
 
+	/// The count of active transactions for the session.
+	activeTransactions: usize = 0,
+
 	/// Execute a comptime-known SQL command for the current session.
 	fn exec(self: Self, comptime sql: []const u8) !void {
 		_ = self.connection.exec(sql, .{}) catch |err| {
@@ -29,9 +32,23 @@ pub const Session = struct {
 		try self.exec("ROLLBACK;");
 	}
 
+	/// Rollback all active transactions.
+	pub fn rollbackAll(self: Self) !void {
+		for (0..self.activeTransactions) |_| {
+			self.rollbackTransaction();
+		}
+	}
+
 	/// Commit the current transaction.
 	pub fn commitTransaction(self: Self) !void {
 		try self.exec("COMMIT;");
+	}
+
+	/// Commit all active transactions.
+	pub fn commitAll(self: Self) !void {
+		for (0..self.activeTransactions) |_| {
+			self.commitTransaction();
+		}
 	}
 
 	/// Create a new savepoint with the given name.

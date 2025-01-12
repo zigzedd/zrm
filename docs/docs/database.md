@@ -51,7 +51,19 @@ defer session.deinit();
 
 Using sessions, you can start transactions and use savepoints.
 
+::: warning
+You probably want to rollback all active transactions in `defer`, so that none remain active after leaving the active branch.
+:::
+
 ```zig
+// Start a new session.
+var session = try zrm.Session.init(database);
+defer {
+	// Rollback all active transactions that remain active.
+	session.rollbackAll();
+	session.deinit();
+};
+
 try session.beginTransaction();
 
 // Do something.

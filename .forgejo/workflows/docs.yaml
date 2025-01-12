@@ -1,0 +1,24 @@
+on:
+  push:
+    tags:
+      - "*"
+jobs:
+  build_docs:
+    runs-on: docker
+    container:
+      image: docker.zeptotech.net/zeptotech/zig-yarn:1.1.0
+      credentials:
+        username: ${{ vars.DOCKER_REGISTRY_USERNAME }}
+        password: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p artifact/api
+      - run: (cd docs && corepack enable && yarn install)
+      - run: (cd docs && yarn docs:build)
+      - run: mv docs/.vitepress/dist/* artifact
+      - run: /zig/zig build docs
+      - run: mv zig-out/docs/* artifact/api
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: docs.zip
+          path: artifact

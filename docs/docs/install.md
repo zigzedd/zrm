@@ -3,7 +3,7 @@
 You can easily install ZRM using the `zig fetch` command:
 
 ```shell
-$ zig fetch --save https://code.zeptotech.net/zedd/zrm/archive/v0.3.0.tar.gz
+$ zig fetch --save https://code.zeptotech.net/zedd/zrm/archive/v0.3.1.tar.gz
 ```
 
 ::: info
@@ -18,8 +18,8 @@ This should add something like the following in `build.zig.zon` dependencies:
 	.dependencies = .{
 		// ...
 		.zrm = .{
-			.url = "https://code.zeptotech.net/zedd/zrm/archive/v0.3.0.tar.gz",
-			.hash = "12200fe147879d72381633e6f44d76db2c8a603cda1969b4e474c15c31052dbb24b7",
+			.url = "https://code.zeptotech.net/zedd/zrm/archive/v0.3.1.tar.gz",
+			.hash = "12200fe...",
 		},
 		// ...
 	},

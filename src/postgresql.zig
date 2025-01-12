@@ -2,7 +2,7 @@ const std = @import("std");
 const pg = @import("pg");
 const zollections = @import("zollections");
 const global = @import("global.zig");
-const errors = @import("errors.zig");
+const ZrmError = @import("errors.zig").ZrmError;
 const database = @import("database.zig");
 const _sql = @import("sql.zig");
 const _relationships = @import("relationships.zig");
@@ -51,7 +51,7 @@ pub fn handleRawPostgresqlError(err: anyerror, connection: *pg.Conn) anyerror {
 		}
 
 		// Return that an error happened in query execution.
-		return errors.ZrmError.QueryFailed;
+		return ZrmError.QueryFailed;
 	} else {
 		// Not an SQL error, just return it.
 		return err;

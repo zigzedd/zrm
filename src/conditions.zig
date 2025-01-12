@@ -1,6 +1,6 @@
 const std = @import("std");
 const _sql = @import("sql.zig");
-const errors = @import("errors.zig");
+const ZrmError = @import("errors.zig").ZrmError;
 
 const Static = @This();
 
@@ -78,7 +78,7 @@ pub fn in(comptime ValueType: type, allocator: std.mem.Allocator, _column: []con
 fn conditionsCombiner(comptime keyword: []const u8, allocator: std.mem.Allocator, subconditions: []const _sql.RawQuery) !_sql.RawQuery {
 	if (subconditions.len == 0) {
 		// At least one condition is required.
-		return errors.ZrmError.AtLeastOneConditionRequired;
+		return ZrmError.AtLeastOneConditionRequired;
 	}
 
 	// Full keyword constant.

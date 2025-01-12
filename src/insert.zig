@@ -1,7 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const zollections = @import("zollections");
-const errors = @import("errors.zig");
+const ZrmError = @import("errors.zig").ZrmError;
 const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
@@ -198,7 +198,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		/// Set selected columns for RETURNING clause.
 		pub fn returningColumns(self: *Self, _select: []const []const u8) void {
 			if (_select.len == 0) {
-				return errors.AtLeastOneSelectionRequired;
+				return ZrmError.AtLeastOneSelectionRequired;
 			}
 
 			self.returning(.{
@@ -220,7 +220,7 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		pub fn buildSql(self: *Self) !void {
 			if (self.insertConfig.values.len == 0) {
 				// At least one value is required to insert.
-				return errors.ZrmError.AtLeastOneValueRequired;
+				return ZrmError.AtLeastOneValueRequired;
 			}
 
 			// Compute VALUES parameters count.

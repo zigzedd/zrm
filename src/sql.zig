@@ -1,5 +1,5 @@
 const std = @import("std");
-const errors = @import("errors.zig");
+const ZrmError = @import("errors.zig").ZrmError;
 
 /// A structure with SQL and its parameters.
 pub const RawQuery = struct {
@@ -120,7 +120,7 @@ pub const RawQueryParameter = union(enum) {
 	null: void,
 
 	/// Convert any value to a query parameter.
-	pub fn fromValue(value: anytype) errors.ZrmError!RawQueryParameter {
+	pub fn fromValue(value: anytype) ZrmError!RawQueryParameter {
 		// Get given value type.
 		const valueType = @typeInfo(@TypeOf(value));
 
@@ -138,7 +138,7 @@ pub const RawQueryParameter = union(enum) {
 					if (pointer.child == u8) {
 						return .{ .string = value };
 					} else {
-						return errors.ZrmError.UnsupportedTableType;
+						return ZrmError.UnsupportedTableType;
 					}
 				}
 			},
@@ -154,7 +154,7 @@ pub const RawQueryParameter = union(enum) {
 					return .{ .null = true };
 				}
 			},
-			else => return errors.ZrmError.UnsupportedTableType
+			else => return ZrmError.UnsupportedTableType
 		};
 	}
 };

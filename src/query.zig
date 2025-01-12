@@ -1,7 +1,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const zollections = @import("zollections");
-const errors = @import("errors.zig");
+const ZrmError = @import("errors.zig").ZrmError;
 const database = @import("database.zig");
 const postgresql = @import("postgresql.zig");
 const _sql = @import("sql.zig");
@@ -105,7 +105,7 @@ pub fn RepositoryQuery(comptime Model: type, comptime TableShape: type, comptime
 		/// Set selected columns for SELECT clause.
 		pub fn selectColumns(self: *Self, _select: []const []const u8) !void {
 			if (_select.len == 0) {
-				return errors.AtLeastOneSelectionRequired;
+				return ZrmError.AtLeastOneSelectionRequired;
 			}
 
 			self.select(.{

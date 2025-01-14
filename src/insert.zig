@@ -196,14 +196,14 @@ pub fn RepositoryInsert(comptime Model: type, comptime TableShape: type, comptim
 		}
 
 		/// Set selected columns for RETURNING clause.
-		pub fn returningColumns(self: *Self, _select: []const []const u8) void {
+		pub fn returningColumns(self: *Self, _select: []const []const u8) !void {
 			if (_select.len == 0) {
 				return ZrmError.AtLeastOneSelectionRequired;
 			}
 
 			self.returning(.{
 				// Join selected columns.
-				.sql = std.mem.join(self.arena.allocator(), ", ", _select),
+				.sql = try std.mem.join(self.arena.allocator(), ", ", _select),
 				.params = &[_]_sql.RawQueryParameter{}, // No parameters.
 			});
 		}
